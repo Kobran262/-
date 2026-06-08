@@ -1,6 +1,16 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+function googleIosUrlScheme(clientId?: string): string | undefined {
+  if (!clientId?.endsWith('.apps.googleusercontent.com')) return undefined;
+  const prefix = clientId.replace('.apps.googleusercontent.com', '');
+  return `com.googleusercontent.apps.${prefix}`;
+}
+
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const googleScheme = googleIosUrlScheme(googleClientId);
+
+  return {
   ...config,
   name: 'Srecha WMS',
   slug: 'srecha-wms',
@@ -11,12 +21,21 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'dark',
   ios: {
     bundleIdentifier: 'com.srecha.wms',
-    buildNumber: '5',
+    buildNumber: '6',
     appleTeamId: '54VMCQN8D8',
     supportsTablet: false,
     infoPlist: {
       NSCameraUsageDescription: 'Для сканирования штрихкодов товаров',
       NSFaceIDUsageDescription: 'Для быстрого входа в приложение',
+      ...(googleScheme
+        ? {
+            CFBundleURLTypes: [
+              {
+                CFBundleURLSchemes: [googleScheme],
+              },
+            ],
+          }
+        : {}),
     },
   },
   android: {
@@ -56,4 +75,5 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
     GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
   },
-});
+};
+};

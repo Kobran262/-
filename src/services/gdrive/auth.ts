@@ -21,6 +21,15 @@ function getClientId(): string | undefined {
   return Constants.expoConfig?.extra?.GOOGLE_OAUTH_CLIENT_ID as string | undefined;
 }
 
+/** Redirect URI for Google OAuth (iOS client ID → reversed scheme). */
+function getGoogleRedirectUri(clientId: string): string {
+  if (clientId.endsWith('.apps.googleusercontent.com')) {
+    const prefix = clientId.replace('.apps.googleusercontent.com', '');
+    return `com.googleusercontent.apps.${prefix}:/oauth2redirect`;
+  }
+  return AuthSession.makeRedirectUri({ scheme: 'srechawms' });
+}
+
 async function fetchUserEmail(accessToken: string): Promise<string | undefined> {
   try {
     const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -55,7 +64,7 @@ export async function signInWithGoogle(): Promise<boolean> {
   const clientId = getClientId();
   if (!clientId) return false;
 
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'srechawms' });
+  const redirectUri = getGoogleRedirectUri(clientId);
 
   const request = new AuthSession.AuthRequest({
     clientId,
