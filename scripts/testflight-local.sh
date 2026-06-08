@@ -54,27 +54,25 @@ xcodebuild \
 echo "→ Генерация dSYM для prebuilt frameworks..."
 bash "$SRC/scripts/generate-prebuilt-dsyms.sh" "$ARCHIVE"
 
-echo "→ Export IPA..."
-rm -rf "$EXPORT_DIR"
+echo "→ Upload to TestFlight (App Store Connect)..."
+UPLOAD_PLIST="$BUILD_DIR/ios/ExportOptionsUpload.plist"
+cat > "$UPLOAD_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>app-store-connect</string>
+  <key>destination</key><string>upload</string>
+  <key>teamID</key><string>$TEAM_ID</string>
+  <key>uploadSymbols</key><true/>
+  <key>signingStyle</key><string>automatic</string>
+</dict></plist>
+EOF
+
 xcodebuild \
   -exportArchive \
   -archivePath "$ARCHIVE" \
-  -exportPath "$EXPORT_DIR" \
-  -exportOptionsPlist ExportOptions.plist \
+  -exportPath "$EXPORT_DIR/upload" \
+  -exportOptionsPlist "$UPLOAD_PLIST" \
   -allowProvisioningUpdates
-
-echo "→ Upload to TestFlight..."
-if [ -n "${APP_STORE_CONNECT_PASSWORD:-}" ]; then
-  xcrun altool --upload-app --type ios --file "$IPA" --username "$APPLE_ID" --password "$APP_STORE_CONNECT_PASSWORD"
-elif security find-generic-password -s "AC_PASSWORD" -a "$APPLE_ID" &>/dev/null; then
-  xcrun altool --upload-app --type ios --file "$IPA" --username "$APPLE_ID" --password "@keychain:AC_PASSWORD"
-else
-  echo ""
-  echo "IPA готов: $IPA"
-  echo "Загрузите вручную через Transporter или Xcode Organizer."
-  echo "Или задайте APP_STORE_CONNECT_PASSWORD (app-specific password)."
-  open -a Transporter "$IPA" 2>/dev/null || open "$EXPORT_DIR"
-  exit 0
-fi
 
 echo "✓ Загружено в App Store Connect / TestFlight"
