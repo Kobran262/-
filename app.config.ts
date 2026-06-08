@@ -11,7 +11,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'dark',
   ios: {
     bundleIdentifier: 'com.srecha.wms',
-    buildNumber: '2',
+    buildNumber: '3',
     appleTeamId: '54VMCQN8D8',
     supportsTablet: false,
     infoPlist: {
@@ -29,6 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     './plugins/withSwiftConcurrencyFix.js',
+    './plugins/withPrebuiltFrameworkDSYMs.js',
     'expo-router',
     'expo-sqlite',
     'expo-local-authentication',

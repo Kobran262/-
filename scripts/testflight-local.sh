@@ -51,6 +51,9 @@ xcodebuild \
   -allowProvisioningUpdates \
   archive
 
+echo "→ Генерация dSYM для prebuilt frameworks..."
+bash "$SRC/scripts/generate-prebuilt-dsyms.sh" "$ARCHIVE"
+
 echo "→ Export IPA..."
 rm -rf "$EXPORT_DIR"
 xcodebuild \
