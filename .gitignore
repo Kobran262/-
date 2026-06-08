@@ -43,4 +43,5 @@ yarn-error.*
 /tmp/
 
 # Whisper models (140–465 MB)
-assets/models/
+assets/models/*
+!assets/models/README.md
