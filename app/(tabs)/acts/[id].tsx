@@ -8,9 +8,13 @@ import {
   addActLine,
   closeAct,
   getProducts,
+  updateActLine,
 } from '@/src/db/queries';
 import { generateActPdf, sharePdf } from '@/src/services/pdf/generator';
 import { exportActsCsv, shareCsv } from '@/src/services/csv/exporter';
+import { uploadPdfToDrive } from '@/src/services/gdrive/uploader';
+import { isGoogleConnected } from '@/src/services/gdrive/auth';
+import { useSettingsStore } from '@/src/store/settingsStore';
 import { StepIndicator } from '@/src/components/ui/StepIndicator';
 import { StatusBadge } from '@/src/components/ui/StatusBadge';
 import { ACT_TYPE_LABELS } from '@/src/types';
@@ -22,6 +26,7 @@ import { eq } from 'drizzle-orm';
 export default function ActDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { gdriveAutoUpload } = useSettingsStore();
   const [act, setAct] = useState<Awaited<ReturnType<typeof getActById>> | null>(null);
   const [lines, setLines] = useState<Awaited<ReturnType<typeof getActLines>>>([]);
   const [showAddLine, setShowAddLine] = useState(false);
@@ -36,7 +41,11 @@ export default function ActDetailScreen() {
     setLines(await getActLines(id));
   }, [id]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const searchProducts = async (q: string) => {
     setSearch(q);
@@ -63,6 +72,44 @@ export default function ActDetailScreen() {
     load();
   };
 
+  const handleQtyChange = async (
+    line: Awaited<ReturnType<typeof getActLines>>[number],
+    val: string
+  ) => {
+    const num = parseFloat(val);
+    if (isNaN(num)) return;
+    await updateActLine(line.id, {
+      qty_actual: num,
+      qty_planned: line.qty_planned ?? undefined,
+      price_unit: line.price_unit ?? undefined,
+    });
+    load();
+  };
+
+  const handleConditionChange = async (
+    line: Awaited<ReturnType<typeof getActLines>>[number],
+    condition: string
+  ) => {
+    await updateActLine(line.id, {
+      qty_actual: line.qty_actual ?? undefined,
+      qty_planned: line.qty_planned ?? undefined,
+      price_unit: line.price_unit ?? undefined,
+      condition,
+    });
+    load();
+  };
+
+  const uploadToDrive = async (actData: NonNullable<typeof act>, pdfPath: string) => {
+    const driveFileId = await uploadPdfToDrive(pdfPath, {
+      number: actData.number,
+      type: actData.type,
+      date: actData.date,
+    });
+    const db = getDb();
+    await db.update(acts).set({ gdrive_id: driveFileId }).where(eq(acts.id, actData.id));
+    await load();
+  };
+
   const handleClose = () => {
     Alert.alert('Закрыть акт?', 'После закрытия редактирование будет невозможно', [
       { text: 'Отмена', style: 'cancel' },
@@ -72,6 +119,21 @@ export default function ActDetailScreen() {
           if (!id) return;
           setLoading(true);
           await closeAct(id, signature || undefined);
+          const updatedAct = await getActById(id);
+          const updatedLines = await getActLines(id);
+
+          if (gdriveAutoUpload && updatedAct && (await isGoogleConnected())) {
+            try {
+              const path = await generateActPdf(
+                updatedAct as Parameters<typeof generateActPdf>[0],
+                updatedLines as Parameters<typeof generateActPdf>[1]
+              );
+              await uploadToDrive(updatedAct, path);
+            } catch {
+              // Автозагрузка не блокирует закрытие акта
+            }
+          }
+
           await load();
           setLoading(false);
         },
@@ -92,6 +154,32 @@ export default function ActDetailScreen() {
       await sharePdf(path);
     } catch (e) {
       Alert.alert('Ошибка PDF', e instanceof Error ? e.message : 'Не удалось создать PDF');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDriveUpload = async () => {
+    if (!act) return;
+
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      Alert.alert('Google Drive', 'Подключите Google Drive в настройках');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const path =
+        act.pdf_path ??
+        (await generateActPdf(
+          act as Parameters<typeof generateActPdf>[0],
+          lines as Parameters<typeof generateActPdf>[1]
+        ));
+      await uploadToDrive(act, path);
+      Alert.alert('Готово', 'PDF загружен в Google Drive');
+    } catch (e) {
+      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось загрузить в Drive');
     } finally {
       setLoading(false);
     }
@@ -160,29 +248,74 @@ export default function ActDetailScreen() {
           return (
             <View
               key={line.id}
-              className={`bg-surface rounded-[10px] border p-3.5 mb-2 flex-row items-center gap-2.5 ${
+              className={`bg-surface rounded-[10px] border p-3.5 mb-2 ${
                 hasDiff ? 'border-danger/30' : 'border-border'
               }`}
             >
-              <View className="flex-1">
-                <Text className={`text-[9px] tracking-wide mb-0.5 ${hasDiff ? 'text-danger' : 'text-gold'}`}>
-                  {line.sku}
-                </Text>
-                <Text className="text-[13px] text-foreground">{line.product_name}</Text>
-                <Text className="text-[11px] text-[#555] mt-0.5">
-                  {line.category} · {line.unit}
-                </Text>
-              </View>
-              <View className="items-end">
-                <Text className="text-[13px] text-foreground font-medium">{line.qty_planned} {line.unit}</Text>
-                {hasDiff ? (
-                  <Text className="text-[11px] text-danger">
-                    факт {line.qty_actual} {line.qty_diff! > 0 ? '▲' : '▼'}
+              <View className="flex-row items-start gap-2.5">
+                <View className="flex-1">
+                  <Text
+                    className={`text-[9px] tracking-wide mb-0.5 ${hasDiff ? 'text-danger' : 'text-gold'}`}
+                  >
+                    {line.sku}
                   </Text>
-                ) : (
-                  <Text className="text-[11px] text-success">факт {line.qty_actual}</Text>
-                )}
+                  <Text className="text-[13px] text-foreground">{line.product_name}</Text>
+                  <Text className="text-[11px] text-[#555] mt-0.5">
+                    {line.category} · {line.unit}
+                  </Text>
+                </View>
+                <View className="items-end">
+                  <Text className="text-[11px] text-[#555]">план {line.qty_planned}</Text>
+                  {isDraft ? (
+                    <TextInput
+                      className="text-[13px] text-foreground font-medium bg-background border border-border rounded px-2 py-0.5 min-w-[60px] text-right mt-0.5"
+                      value={String(line.qty_actual ?? '')}
+                      keyboardType="numeric"
+                      onChangeText={(val) => handleQtyChange(line, val)}
+                    />
+                  ) : (
+                    <Text className="text-[13px] text-foreground font-medium">
+                      факт {line.qty_actual}
+                    </Text>
+                  )}
+                  {hasDiff && (
+                    <Text className="text-[11px] text-danger">
+                      откл. {line.qty_diff! > 0 ? '+' : ''}
+                      {line.qty_diff}
+                    </Text>
+                  )}
+                </View>
               </View>
+
+              {isDraft && act.type === 'transfer' && (
+                <View className="flex-row gap-2 mt-2">
+                  {(['Норма', 'Брак'] as const).map((cond) => (
+                    <Pressable
+                      key={cond}
+                      onPress={() => handleConditionChange(line, cond)}
+                      className={`px-3 py-1 rounded-lg border ${
+                        (line.condition ?? 'Норма') === cond
+                          ? cond === 'Брак'
+                            ? 'border-danger bg-danger/10'
+                            : 'border-success bg-success/10'
+                          : 'border-border'
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs ${
+                          (line.condition ?? 'Норма') === cond
+                            ? cond === 'Брак'
+                              ? 'text-danger'
+                              : 'text-success'
+                            : 'text-[#888]'
+                        }`}
+                      >
+                        {cond}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
           );
         })}
@@ -200,7 +333,11 @@ export default function ActDetailScreen() {
                   autoFocus
                 />
                 {products.slice(0, 8).map((p) => (
-                  <Pressable key={p.id} onPress={() => handleAddLine(p)} className="py-2 border-b border-border">
+                  <Pressable
+                    key={p.id}
+                    onPress={() => handleAddLine(p)}
+                    className="py-2 border-b border-border"
+                  >
                     <Text className="text-gold text-[9px]">{p.id}</Text>
                     <Text className="text-foreground text-sm">{p.name}</Text>
                   </Pressable>
@@ -235,7 +372,9 @@ export default function ActDetailScreen() {
             )}
 
             <View className="bg-surface rounded-[10px] border border-border px-3.5 py-2.5 mb-3">
-              <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1">Подпись (ФИО)</Text>
+              <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1">
+                Подпись (ФИО)
+              </Text>
               <TextInput
                 className="text-sm text-foreground p-0"
                 value={signature}
@@ -250,7 +389,17 @@ export default function ActDetailScreen() {
         {act.status === 'closed' && (
           <View className="gap-2 mb-4">
             <Pressable onPress={handlePdf} className="bg-gold rounded-xl py-3.5 items-center">
-              <Text className="text-background font-medium">{loading ? '…' : 'Сгенерировать PDF'}</Text>
+              <Text className="text-background font-medium">
+                {loading ? '…' : 'Сгенерировать PDF'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={handleDriveUpload}
+              className="bg-surface border border-border rounded-xl py-3.5 items-center"
+            >
+              <Text className="text-[#888]">
+                {act.gdrive_id ? '✓ Загружено в Drive' : 'Загрузить в Google Drive'}
+              </Text>
             </Pressable>
             <Pressable
               onPress={async () => {
@@ -269,7 +418,10 @@ export default function ActDetailScreen() {
 
       {isDraft && (
         <View className="px-5 py-3 bg-background border-t border-[#1f1f1f] flex-row gap-2.5">
-          <Pressable onPress={() => router.back()} className="flex-1 bg-surface border border-border rounded-xl py-3.5 items-center">
+          <Pressable
+            onPress={() => router.back()}
+            className="flex-1 bg-surface border border-border rounded-xl py-3.5 items-center"
+          >
             <Text className="text-[#888] text-sm">Черновик</Text>
           </Pressable>
           <Pressable

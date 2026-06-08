@@ -1,6 +1,6 @@
 import { eq, desc, and, like, or, gte, lte, sql } from 'drizzle-orm';
 import { getDb } from '@/src/db/client';
-import { acts, act_lines, products, movements, users } from '@/src/db/schema';
+import { acts, act_lines, products, movements, users, inventory_acts, inventory_lines } from '@/src/db/schema';
 import type { ActType, ActStatus } from '@/src/types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateActNumber, calcQtyDiff, calcLineAmount } from '@/src/utils/actNumbers';
@@ -307,4 +307,203 @@ export async function getProductCount() {
 export async function getAllUsers() {
   const db = getDb();
   return db.select().from(users).orderBy(users.name);
+}
+
+export async function updateActLine(
+  lineId: string,
+  updates: {
+    qty_actual?: number;
+    qty_planned?: number;
+    price_unit?: number;
+    notes?: string;
+    condition?: string;
+  }
+): Promise<void> {
+  const db = getDb();
+  const existing = await db.select().from(act_lines).where(eq(act_lines.id, lineId)).limit(1);
+  if (!existing[0]) return;
+
+  const line = existing[0];
+  const qty_planned = updates.qty_planned ?? line.qty_planned;
+  const qty_actual = updates.qty_actual ?? line.qty_actual;
+  const price_unit = updates.price_unit ?? line.price_unit;
+  const qty_diff = calcQtyDiff(qty_planned, qty_actual);
+  const amount = calcLineAmount(qty_actual, price_unit);
+
+  await db
+    .update(act_lines)
+    .set({
+      ...updates,
+      qty_planned,
+      qty_actual,
+      price_unit,
+      qty_diff,
+      amount,
+      updated_at: Date.now(),
+    })
+    .where(eq(act_lines.id, lineId));
+
+  await db.update(acts).set({ updated_at: Date.now() }).where(eq(acts.id, line.act_id));
+}
+
+export async function calcAccountingStock(): Promise<
+  Array<{ sku: string; product_name: string; warehouse: string; unit: string; qty: number }>
+> {
+  const db = getDb();
+  const allMovements = await db.select().from(movements);
+  const allProducts = await db.select().from(products).where(eq(products.is_active, true));
+
+  const stockMap = new Map<
+    string,
+    { sku: string; product_name: string; warehouse: string; unit: string; qty: number }
+  >();
+
+  for (const m of allMovements) {
+    if (m.qty_in && m.warehouse_to) {
+      const key = `${m.sku}|${m.warehouse_to}`;
+      const cur = stockMap.get(key) ?? {
+        sku: m.sku,
+        product_name: m.product_name,
+        warehouse: m.warehouse_to,
+        unit: m.unit,
+        qty: 0,
+      };
+      cur.qty += m.qty_in;
+      stockMap.set(key, cur);
+    }
+    if (m.qty_out && m.warehouse_from) {
+      const key = `${m.sku}|${m.warehouse_from}`;
+      const cur = stockMap.get(key) ?? {
+        sku: m.sku,
+        product_name: m.product_name,
+        warehouse: m.warehouse_from,
+        unit: m.unit,
+        qty: 0,
+      };
+      cur.qty -= m.qty_out;
+      stockMap.set(key, cur);
+    }
+  }
+
+  const warehouses = ['WH-01', 'WH-02', 'WH-03', 'WH-04'];
+  for (const p of allProducts) {
+    for (const wh of warehouses) {
+      const key = `${p.id}|${wh}`;
+      if (!stockMap.has(key) && p.warehouse === wh) {
+        stockMap.set(key, {
+          sku: p.id,
+          product_name: p.name,
+          warehouse: wh,
+          unit: p.packaging === 'bulk' ? 'кг' : 'шт',
+          qty: 0,
+        });
+      }
+    }
+  }
+
+  return Array.from(stockMap.values()).sort(
+    (a, b) => a.warehouse.localeCompare(b.warehouse) || a.sku.localeCompare(b.sku)
+  );
+}
+
+export async function getInventoryActs() {
+  const db = getDb();
+  return db.select().from(inventory_acts).orderBy(desc(inventory_acts.date_start));
+}
+
+export async function getInventoryActById(id: string) {
+  const db = getDb();
+  const rows = await db.select().from(inventory_acts).where(eq(inventory_acts.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getInventoryLines(inventoryId: string, warehouse?: string) {
+  const db = getDb();
+  const conditions = [eq(inventory_lines.inventory_id, inventoryId)];
+  if (warehouse) conditions.push(eq(inventory_lines.warehouse, warehouse));
+  return db
+    .select()
+    .from(inventory_lines)
+    .where(and(...conditions))
+    .orderBy(inventory_lines.warehouse, inventory_lines.sku);
+}
+
+export async function createInventoryAct(params: {
+  period_month: number;
+  period_year: number;
+  commission: string;
+}): Promise<{ id: string; number: string }> {
+  const db = getDb();
+  const deviceId = await getFullDeviceId();
+  const number = await generateActNumber('inventory');
+  const now = Date.now();
+  const id = uuidv4();
+
+  await db.insert(inventory_acts).values({
+    id,
+    number,
+    period_month: params.period_month,
+    period_year: params.period_year,
+    date_start: now,
+    commission: params.commission,
+    status: 'draft',
+    created_at: now,
+    updated_at: now,
+    device_id: deviceId,
+    sync_pending: false,
+  });
+
+  const stock = await calcAccountingStock();
+  for (const item of stock) {
+    await db.insert(inventory_lines).values({
+      id: uuidv4(),
+      inventory_id: id,
+      sku: item.sku,
+      product_name: item.product_name,
+      warehouse: item.warehouse,
+      unit: item.unit,
+      qty_accounting: item.qty,
+      qty_actual: item.qty,
+      qty_diff: 0,
+      diff_pct: 0,
+      updated_at: now,
+    });
+  }
+
+  return { id, number };
+}
+
+export async function updateInventoryLine(
+  lineId: string,
+  qty_actual: number,
+  reason?: string
+): Promise<void> {
+  const db = getDb();
+  const rows = await db.select().from(inventory_lines).where(eq(inventory_lines.id, lineId)).limit(1);
+  if (!rows[0]) return;
+
+  const line = rows[0];
+  const accounting = line.qty_accounting ?? 0;
+  const qty_diff = qty_actual - accounting;
+  const diff_pct = accounting !== 0 ? (qty_diff / accounting) * 100 : qty_actual !== 0 ? 100 : 0;
+
+  await db
+    .update(inventory_lines)
+    .set({
+      qty_actual,
+      qty_diff,
+      diff_pct,
+      reason: reason ?? line.reason,
+      updated_at: Date.now(),
+    })
+    .where(eq(inventory_lines.id, lineId));
+}
+
+export async function closeInventoryAct(inventoryId: string): Promise<void> {
+  const db = getDb();
+  const now = Date.now();
+  await db
+    .update(inventory_acts)
+    .set({ status: 'closed', date_end: now, updated_at: now })
+    .where(eq(inventory_acts.id, inventoryId));
 }

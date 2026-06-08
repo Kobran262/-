@@ -4,14 +4,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Srecha WMS',
   slug: 'srecha-wms',
-  version: '1.0.0',
+  version: '1.1.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'srechawms',
   userInterfaceStyle: 'dark',
   ios: {
     bundleIdentifier: 'com.srecha.wms',
-    buildNumber: '1',
+    buildNumber: '2',
     appleTeamId: '54VMCQN8D8',
     supportsTablet: false,
     infoPlist: {

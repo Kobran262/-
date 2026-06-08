@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert, TextInput, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { getProductByBarcode, bindBarcode } from '@/src/db/queries';
@@ -12,6 +13,7 @@ import type { products } from '@/src/db/schema';
 type Product = typeof products.$inferSelect;
 
 export default function ScannerScreen() {
+  const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [product, setProduct] = useState<Product | null>(null);
@@ -112,7 +114,17 @@ export default function ScannerScreen() {
             <Text className="text-foreground text-lg font-medium">{product.name}</Text>
             <Text className="text-foreground/60">{product.category} · {product.channel}</Text>
             <Text className="text-foreground/60">Склад: {product.warehouse}</Text>
-            <Button title="Сканировать снова" variant="secondary" className="mt-3" onPress={resetScanner} />
+            <Button
+              title="Добавить в акт"
+              className="mt-3"
+              onPress={() =>
+                router.push({
+                  pathname: '/(tabs)/acts/new',
+                  params: { prefill_sku: product.id },
+                })
+              }
+            />
+            <Button title="Сканировать снова" variant="secondary" className="mt-2" onPress={resetScanner} />
           </Card>
         )}
 

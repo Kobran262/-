@@ -23,6 +23,7 @@ export async function exportProductsCsv(): Promise<string> {
     is_material: p.is_material,
     is_active: p.is_active,
     notes: p.notes,
+    updated_at: p.updated_at,
   }));
 
   const csv = Papa.unparse(rows);

@@ -160,6 +160,107 @@ function buildShipmentHtml(act: Act, lines: ActLine[]): string {
   </body></html>`;
 }
 
+function buildPackagingCardHtml(act: Act, lines: ActLine[]): string {
+  const rawLines = lines.filter((l) => l.unit === 'г' || l.unit === 'кг');
+  const pkgLines = lines.filter(
+    (l) => l.category === 'Упаковка' || l.sku.startsWith('PKG-')
+  );
+  const finishedLines = lines.filter((l) => l.sku === act.sku_finished);
+
+  const rawRows = rawLines
+    .map(
+      (l, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${l.sku}</td>
+      <td>${l.norm_per_unit ?? '—'}</td>
+      <td>${l.qty_planned ?? '—'}</td>
+      <td>${l.qty_planned != null && l.norm_per_unit != null ? (l.qty_planned * l.norm_per_unit).toFixed(0) : '—'}</td>
+      <td>${l.qty_actual != null && l.norm_per_unit != null ? (l.qty_actual * l.norm_per_unit).toFixed(0) : '—'}</td>
+      <td class="${(l.qty_diff ?? 0) < 0 ? 'diff-negative' : (l.qty_diff ?? 0) > 0 ? 'diff-positive' : ''}">${l.qty_diff != null && l.norm_per_unit != null ? (l.qty_diff * l.norm_per_unit).toFixed(0) : '—'}</td>
+    </tr>`
+    )
+    .join('');
+
+  const pkgRows = pkgLines
+    .map(
+      (l) => `
+    <tr>
+      <td>${l.product_name}</td>
+      <td>${l.sku}</td>
+      <td>${l.norm_per_unit ?? '—'}</td>
+      <td>${l.qty_planned ?? '—'}</td>
+      <td>${l.qty_actual ?? '—'}</td>
+      <td class="${(l.qty_diff ?? 0) < 0 ? 'diff-negative' : (l.qty_diff ?? 0) > 0 ? 'diff-positive' : ''}">${l.qty_diff ?? '—'}</td>
+    </tr>`
+    )
+    .join('');
+
+  const finishedRows = finishedLines
+    .map(
+      (l) => `
+    <tr>
+      <td>${l.sku}</td>
+      <td>${l.product_name}</td>
+      <td>${act.packaging_type ?? '—'}</td>
+      <td>${l.qty_planned ?? '—'}</td>
+      <td>${l.qty_actual ?? '—'}</td>
+      <td>${l.notes ?? '—'}</td>
+    </tr>`
+    )
+    .join('');
+
+  const statusLabel = act.status === 'closed' ? 'Закрыта' : act.status === 'draft' ? 'Черновик' : 'Активна';
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${BASE_STYLES}
+    .section-title { font-size: 11px; font-weight: bold; margin: 14px 0 6px; color: #1a1a1a; border-left: 3px solid #C8A96E; padding-left: 6px; }
+  </style></head><body>
+    <div class="header"><div class="company">DOO «Srecha»</div></div>
+    <div class="act-title">КАРТА УПАКОВКИ <span class="act-number">${act.number}</span></div>
+    <div style="text-align:center;color:#666;margin-bottom:10px;">WH-03 · Склад производства</div>
+    <table class="meta-table">
+      <tr><td class="meta-label">Номер карты:</td><td>${act.number}</td><td class="meta-label">Тип упаковки:</td><td>${act.packaging_type ?? '—'}</td></tr>
+      <tr><td class="meta-label">Дата открытия:</td><td>${fmtDate(act.date)}</td><td class="meta-label">SKU готовой продукции:</td><td>${act.sku_finished ?? '—'}</td></tr>
+      <tr><td class="meta-label">Дата закрытия:</td><td>${act.date_closed ? fmtDate(act.date_closed) : '—'}</td><td class="meta-label">Ответственный:</td><td>${act.notes ?? '—'}</td></tr>
+      <tr><td class="meta-label">Статус:</td><td colspan="3">${statusLabel}</td></tr>
+    </table>
+
+    <div class="section-title">Раздел 1 — Сырьё</div>
+    <table class="lines-table">
+      <thead><tr>
+        <th>Сорт</th><th>SKU</th><th>Норма г/ед.</th><th>Кол-во ед.</th>
+        <th>Расход план г</th><th>Расход факт г</th><th>Откл. г</th>
+      </tr></thead>
+      <tbody>${rawRows || '<tr><td colspan="7">—</td></tr>'}</tbody>
+    </table>
+
+    <div class="section-title">Раздел 2 — Упаковочные материалы</div>
+    <table class="lines-table">
+      <thead><tr>
+        <th>Материал</th><th>Код WH-02</th><th>Норма/ед.</th><th>Кол-во ед. план</th>
+        <th>Кол-во ед. факт</th><th>Откл.</th>
+      </tr></thead>
+      <tbody>${pkgRows || '<tr><td colspan="6">—</td></tr>'}</tbody>
+    </table>
+
+    <div class="section-title">Раздел 3 — Готовая продукция</div>
+    <table class="lines-table">
+      <thead><tr>
+        <th>SKU</th><th>Наименование</th><th>Тип упак.</th><th>Кол-во план</th>
+        <th>Кол-во факт</th><th>Передано на WH-04</th>
+      </tr></thead>
+      <tbody>${finishedRows || '<tr><td colspan="6">—</td></tr>'}</tbody>
+    </table>
+
+    <div class="signatures">
+      <div class="sig-block">Карту открыл:<div class="sig-line"></div></div>
+      <div class="sig-block">Карту закрыл:<div class="sig-line"></div></div>
+      <div class="sig-block">Утвердил:<div class="sig-line"></div></div>
+    </div>
+    <div class="footer">Srecha WMS · ${format(new Date(), 'dd.MM.yyyy HH:mm')}</div>
+  </body></html>`;
+}
+
 function buildGenericHtml(act: Act, lines: ActLine[]): string {
   const rows = lines
     .map(
@@ -185,6 +286,8 @@ export function buildActHtml(act: Act, lines: ActLine[]): string {
       return buildReceiptHtml(act, lines);
     case 'transfer':
       return buildTransferHtml(act, lines);
+    case 'packaging_card':
+      return buildPackagingCardHtml(act, lines);
     case 'shipment_b2b':
     case 'shipment_ecom':
       return buildShipmentHtml(act, lines);
