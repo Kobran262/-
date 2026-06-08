@@ -149,4 +149,18 @@ export async function runMigrations(): Promise<void> {
   for (const statement of statements) {
     await db.$client.execAsync(`${statement};`);
   }
+
+  const alterStatements = [
+    'ALTER TABLE inventory_lines ADD COLUMN manually_entered INTEGER DEFAULT 0',
+    'ALTER TABLE inventory_acts ADD COLUMN pdf_path TEXT',
+    'ALTER TABLE inventory_acts ADD COLUMN gdrive_id TEXT',
+  ];
+
+  for (const statement of alterStatements) {
+    try {
+      await db.$client.execAsync(`${statement};`);
+    } catch {
+      // column already exists
+    }
+  }
 }

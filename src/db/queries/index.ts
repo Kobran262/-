@@ -1,11 +1,18 @@
-import { eq, desc, and, like, or, gte, lte, sql } from 'drizzle-orm';
+import { eq, desc, and, like, or, gte, lte, sql, inArray, notInArray } from 'drizzle-orm';
 import { getDb } from '@/src/db/client';
 import { acts, act_lines, products, movements, users, inventory_acts, inventory_lines } from '@/src/db/schema';
-import type { ActType, ActStatus } from '@/src/types';
+import type { ActType, ActStatus, WarehouseId } from '@/src/types';
 import { uuidv4 } from '@/src/utils/uuid';
 import { generateActNumber, calcQtyDiff, calcLineAmount } from '@/src/utils/actNumbers';
 import { getFullDeviceId } from '@/src/utils/deviceId';
 import { markActForSync } from '@/src/firebase/sync';
+import {
+  getProductFilter,
+  calcPriority,
+  warehouseSortIndex,
+  ALL_CATEGORIES,
+  type ProductQueryContext,
+} from '@/src/utils/productContext';
 
 export async function getProducts(search?: string, category?: string) {
   const db = getDb();
@@ -23,6 +30,165 @@ export async function getProducts(search?: string, category?: string) {
     conditions.push(eq(products.category, category));
   }
   return db.select().from(products).where(and(...conditions)).orderBy(products.name);
+}
+
+export async function getProductsForAct(
+  ctx: ProductQueryContext,
+  search?: string
+): Promise<Array<(typeof products.$inferSelect) & { priority: number }>> {
+  const db = getDb();
+  const filter = getProductFilter(ctx);
+  const conditions = [eq(products.is_active, true)];
+
+  if (filter.onlyMaterials) conditions.push(eq(products.is_material, true));
+  if (filter.excludeMaterials) conditions.push(eq(products.is_material, false));
+  if (filter.categories?.length) conditions.push(inArray(products.category, filter.categories));
+  if (filter.excludeCategories?.length) {
+    conditions.push(notInArray(products.category, filter.excludeCategories));
+  }
+  if (filter.channels?.length) conditions.push(inArray(products.channel, filter.channels));
+
+  if (search) {
+    conditions.push(
+      or(
+        like(products.name, `%${search}%`),
+        like(products.id, `%${search}%`),
+        like(products.barcode, `%${search}%`)
+      )!
+    );
+  }
+
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(...conditions));
+
+  const withPriority = rows.map((p) => ({
+    ...p,
+    priority: calcPriority(p, filter.priorityRules),
+  }));
+
+  if (ctx.actType === 'inventory') {
+    return withPriority.sort((a, b) => {
+      const whDiff = warehouseSortIndex(a.warehouse) - warehouseSortIndex(b.warehouse);
+      if (whDiff !== 0) return whDiff;
+      return a.name.localeCompare(b.name, 'ru');
+    });
+  }
+
+  return withPriority.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.name.localeCompare(b.name, 'ru');
+  });
+}
+
+export async function getProductsCatalog(filters?: {
+  search?: string;
+  category?: string;
+  channel?: string;
+  warehouse?: string;
+  onlyMaterials?: boolean;
+  onlyTea?: boolean;
+  onlyEquipment?: boolean;
+  includeInactive?: boolean;
+}) {
+  const db = getDb();
+  const conditions = [];
+
+  if (!filters?.includeInactive) conditions.push(eq(products.is_active, true));
+  if (filters?.onlyMaterials) conditions.push(eq(products.is_material, true));
+  if (filters?.onlyTea) {
+    conditions.push(eq(products.is_material, false));
+    conditions.push(
+      notInArray(products.category, [
+        'Чайники',
+        'Воронки',
+        'Аксессуары',
+        'Матча',
+        'Посуда',
+        'Расходники',
+        'Прочее',
+      ])
+    );
+  }
+  if (filters?.onlyEquipment) {
+    conditions.push(
+      inArray(products.category, [
+        'Чайники',
+        'Воронки',
+        'Аксессуары',
+        'Матча',
+        'Посуда',
+        'Расходники',
+      ])
+    );
+  }
+  if (filters?.category) conditions.push(eq(products.category, filters.category));
+  if (filters?.channel) conditions.push(eq(products.channel, filters.channel));
+  if (filters?.warehouse) conditions.push(eq(products.warehouse, filters.warehouse));
+  if (filters?.search) {
+    conditions.push(
+      or(
+        like(products.name, `%${filters.search}%`),
+        like(products.id, `%${filters.search}%`),
+        like(products.barcode, `%${filters.search}%`)
+      )!
+    );
+  }
+
+  const rows =
+    conditions.length > 0
+      ? await db.select().from(products).where(and(...conditions))
+      : await db.select().from(products);
+
+  const categoryOrder = (cat: string) => {
+    const idx = ALL_CATEGORIES.indexOf(cat);
+    return idx >= 0 ? idx : ALL_CATEGORIES.length;
+  };
+
+  return rows.sort((a, b) => {
+    const catDiff = categoryOrder(a.category) - categoryOrder(b.category);
+    if (catDiff !== 0) return catDiff;
+    return a.name.localeCompare(b.name, 'ru');
+  });
+}
+
+export async function createProduct(
+  input: Omit<typeof products.$inferInsert, 'updated_at' | 'sync_pending'>
+): Promise<string> {
+  const db = getDb();
+  const now = Date.now();
+  await db.insert(products).values({
+    ...input,
+    updated_at: now,
+    sync_pending: true,
+  });
+  return input.id;
+}
+
+export async function updateProduct(
+  sku: string,
+  updates: Partial<Omit<typeof products.$inferInsert, 'id' | 'updated_at'>>
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(products)
+    .set({ ...updates, updated_at: Date.now(), sync_pending: true })
+    .where(eq(products.id, sku));
+}
+
+export async function toggleProductActive(sku: string): Promise<void> {
+  const db = getDb();
+  const rows = await db.select().from(products).where(eq(products.id, sku)).limit(1);
+  if (!rows[0]) return;
+  await db
+    .update(products)
+    .set({
+      is_active: !rows[0].is_active,
+      updated_at: Date.now(),
+      sync_pending: true,
+    })
+    .where(eq(products.id, sku));
 }
 
 export async function getProductByBarcode(barcode: string) {
@@ -92,13 +258,21 @@ export async function getActStats() {
   todayStart.setHours(0, 0, 0, 0);
   const todayTs = todayStart.getTime();
 
-  const all = await db.select().from(acts);
+  const [openRes, draftsRes, todayRes, closedTodayRes] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(acts).where(eq(acts.status, 'active')),
+    db.select({ count: sql<number>`count(*)` }).from(acts).where(eq(acts.status, 'draft')),
+    db.select({ count: sql<number>`count(*)` }).from(acts).where(gte(acts.date, todayTs)),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(acts)
+      .where(and(eq(acts.status, 'closed'), gte(acts.date_closed, todayTs))),
+  ]);
+
   return {
-    open: all.filter((a) => a.status === 'active').length,
-    drafts: all.filter((a) => a.status === 'draft').length,
-    today: all.filter((a) => a.date >= todayTs).length,
-    closedToday: all.filter((a) => a.status === 'closed' && (a.date_closed ?? a.date) >= todayTs)
-      .length,
+    open: openRes[0]?.count ?? 0,
+    drafts: draftsRes[0]?.count ?? 0,
+    today: todayRes[0]?.count ?? 0,
+    closedToday: closedTodayRes[0]?.count ?? 0,
   };
 }
 
@@ -108,17 +282,27 @@ export async function getRecentActs(limit = 5) {
 }
 
 export async function getRecentActsWithDetails(limit = 5) {
-  const recent = await getRecentActs(limit);
   const db = getDb();
-  return Promise.all(
-    recent.map(async (act) => {
-      const lines = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(act_lines)
-        .where(eq(act_lines.act_id, act.id));
-      return { ...act, lineCount: lines[0]?.count ?? 0 };
+  const recent = await db.select().from(acts).orderBy(desc(acts.updated_at)).limit(limit);
+
+  if (recent.length === 0) return [];
+
+  const actIds = recent.map((a) => a.id);
+  const counts = await db
+    .select({
+      act_id: act_lines.act_id,
+      count: sql<number>`count(*)`,
     })
-  );
+    .from(act_lines)
+    .where(inArray(act_lines.act_id, actIds))
+    .groupBy(act_lines.act_id);
+
+  const countMap = new Map(counts.map((c) => [c.act_id, c.count]));
+
+  return recent.map((act) => ({
+    ...act,
+    lineCount: countMap.get(act.id) ?? 0,
+  }));
 }
 
 export interface CreateActInput {
@@ -476,7 +660,8 @@ export async function createInventoryAct(params: {
 export async function updateInventoryLine(
   lineId: string,
   qty_actual: number,
-  reason?: string
+  reason?: string,
+  manually_entered = true
 ): Promise<void> {
   const db = getDb();
   const rows = await db.select().from(inventory_lines).where(eq(inventory_lines.id, lineId)).limit(1);
@@ -494,9 +679,51 @@ export async function updateInventoryLine(
       qty_diff,
       diff_pct,
       reason: reason ?? line.reason,
+      manually_entered,
       updated_at: Date.now(),
     })
     .where(eq(inventory_lines.id, lineId));
+}
+
+export async function addInventoryLine(
+  inventoryId: string,
+  params: {
+    sku: string;
+    product_name: string;
+    warehouse: WarehouseId;
+    unit: string;
+    qty_actual?: number;
+  }
+): Promise<void> {
+  const db = getDb();
+  const existing = await db
+    .select()
+    .from(inventory_lines)
+    .where(and(eq(inventory_lines.inventory_id, inventoryId), eq(inventory_lines.sku, params.sku)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await updateInventoryLine(existing[0].id, params.qty_actual ?? 0);
+    return;
+  }
+
+  const qty_actual = params.qty_actual ?? 0;
+  const now = Date.now();
+
+  await db.insert(inventory_lines).values({
+    id: uuidv4(),
+    inventory_id: inventoryId,
+    sku: params.sku,
+    product_name: params.product_name,
+    warehouse: params.warehouse,
+    unit: params.unit,
+    qty_accounting: 0,
+    qty_actual,
+    qty_diff: qty_actual,
+    diff_pct: qty_actual !== 0 ? 100 : 0,
+    manually_entered: true,
+    updated_at: now,
+  });
 }
 
 export async function closeInventoryAct(inventoryId: string): Promise<void> {

@@ -115,6 +115,8 @@ export const inventory_acts = sqliteTable('inventory_acts', {
   updated_at: integer('updated_at').notNull(),
   device_id: text('device_id').notNull(),
   sync_pending: integer('sync_pending', { mode: 'boolean' }).default(false),
+  pdf_path: text('pdf_path'),
+  gdrive_id: text('gdrive_id'),
 });
 
 export const inventory_lines = sqliteTable('inventory_lines', {
@@ -130,6 +132,7 @@ export const inventory_lines = sqliteTable('inventory_lines', {
   diff_pct: real('diff_pct'),
   reason: text('reason'),
   correction: real('correction'),
+  manually_entered: integer('manually_entered', { mode: 'boolean' }).default(false),
   updated_at: integer('updated_at').notNull(),
 });
 

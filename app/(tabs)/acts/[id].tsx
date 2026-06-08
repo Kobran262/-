@@ -7,7 +7,7 @@ import {
   getActLines,
   addActLine,
   closeAct,
-  getProducts,
+  getProductsForAct,
   updateActLine,
 } from '@/src/db/queries';
 import { generateActPdf, sharePdf } from '@/src/services/pdf/generator';
@@ -18,7 +18,8 @@ import { useSettingsStore } from '@/src/store/settingsStore';
 import { StepIndicator } from '@/src/components/ui/StepIndicator';
 import { StatusBadge } from '@/src/components/ui/StatusBadge';
 import { ACT_TYPE_LABELS } from '@/src/types';
-import type { ActStatus } from '@/src/types';
+import type { ActStatus, ActType, WarehouseId } from '@/src/types';
+import type { ProductQueryContext } from '@/src/utils/productContext';
 import { getDb } from '@/src/db/client';
 import { acts } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
@@ -31,7 +32,7 @@ export default function ActDetailScreen() {
   const [lines, setLines] = useState<Awaited<ReturnType<typeof getActLines>>>([]);
   const [showAddLine, setShowAddLine] = useState(false);
   const [search, setSearch] = useState('');
-  const [products, setProducts] = useState<Awaited<ReturnType<typeof getProducts>>>([]);
+  const [products, setProducts] = useState<Awaited<ReturnType<typeof getProductsForAct>>>([]);
   const [signature, setSignature] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -47,12 +48,27 @@ export default function ActDetailScreen() {
     }, [load])
   );
 
+  const buildContext = (actData: NonNullable<typeof act>): ProductQueryContext => ({
+    actType: actData.type as ActType,
+    transferFrom: actData.warehouse_from as WarehouseId | undefined,
+    transferTo: actData.warehouse_to as WarehouseId | undefined,
+    packagingType: actData.packaging_type ?? undefined,
+    channel: actData.channel ?? undefined,
+  });
+
   const searchProducts = async (q: string) => {
     setSearch(q);
-    setProducts(await getProducts(q));
+    if (!act) return;
+    setProducts(await getProductsForAct(buildContext(act), q));
   };
 
-  const handleAddLine = async (product: Awaited<ReturnType<typeof getProducts>>[number]) => {
+  const openAddLine = async () => {
+    if (!act) return;
+    setShowAddLine(true);
+    setProducts(await getProductsForAct(buildContext(act)));
+  };
+
+  const handleAddLine = async (product: Awaited<ReturnType<typeof getProductsForAct>>[number]) => {
     if (!id || !act) return;
     await addActLine(
       id,
@@ -332,23 +348,35 @@ export default function ActDetailScreen() {
                   onChangeText={searchProducts}
                   autoFocus
                 />
-                {products.slice(0, 8).map((p) => (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => handleAddLine(p)}
-                    className="py-2 border-b border-border"
-                  >
-                    <Text className="text-gold text-[9px]">{p.id}</Text>
-                    <Text className="text-foreground text-sm">{p.name}</Text>
-                  </Pressable>
-                ))}
+                {(() => {
+                  let lastPriority = -1;
+                  return products.slice(0, 12).map((p) => {
+                    const showDivider = p.priority !== lastPriority && lastPriority !== -1;
+                    lastPriority = p.priority;
+                    return (
+                      <View key={p.id}>
+                        {showDivider && <View className="border-t border-border my-1" />}
+                        <Pressable
+                          onPress={() => handleAddLine(p)}
+                          className="py-2 border-b border-border"
+                        >
+                          <Text className="text-gold text-[9px]">{p.id}</Text>
+                          <Text className="text-foreground text-sm">{p.name}</Text>
+                          <Text className="text-[#555] text-[10px]">
+                            {p.category} · {p.packaging}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  });
+                })()}
                 <Pressable onPress={() => setShowAddLine(false)} className="mt-2">
                   <Text className="text-gold text-center text-sm">Отмена</Text>
                 </Pressable>
               </View>
             ) : (
               <Pressable
-                onPress={() => setShowAddLine(true)}
+                onPress={openAddLine}
                 className="border border-dashed border-border rounded-[10px] p-3 flex-row items-center justify-center gap-2 mb-2"
               >
                 <Text className="text-[#444] text-lg">＋</Text>

@@ -39,6 +39,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="products/index"
+        options={{
+          title: 'Товары',
+          tabBarIcon: ({ color }) => <TabIcon name="cube" color={String(color)} />,
+        }}
+      />
+      <Tabs.Screen
         name="scanner"
         options={{
           title: 'Сканер',
@@ -61,6 +68,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen name="acts/new" options={{ href: null }} />
       <Tabs.Screen name="acts/[id]" options={{ href: null }} />
+      <Tabs.Screen name="products/[id]" options={{ href: null }} />
       <Tabs.Screen name="inventory/[id]" options={{ href: null }} />
     </Tabs>
   );

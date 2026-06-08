@@ -21,7 +21,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   userInterfaceStyle: 'dark',
   ios: {
     bundleIdentifier: 'com.srecha.wms',
-    buildNumber: '6',
+    buildNumber: '7',
     appleTeamId: '54VMCQN8D8',
     supportsTablet: false,
     infoPlist: {

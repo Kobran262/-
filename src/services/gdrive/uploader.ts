@@ -114,3 +114,60 @@ export async function uploadPdfToDrive(
   const uploaded = (await uploadRes.json()) as { id: string };
   return uploaded.id;
 }
+
+export async function uploadInventoryPdfToDrive(
+  localPath: string,
+  inv: { number: string; period_year: number; period_month: number }
+): Promise<string> {
+  const { getValidAccessToken } = await import('./auth');
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    throw new Error('Google Drive не подключён');
+  }
+
+  const rootId = await getOrCreateFolder(accessToken, ROOT_FOLDER);
+  const invRootId = await getOrCreateFolder(accessToken, 'Инвентаризация', rootId);
+  const monthLabel = `${inv.period_year}-${String(inv.period_month).padStart(2, '0')}`;
+  const monthId = await getOrCreateFolder(accessToken, monthLabel, invRootId);
+
+  const filename = `${inv.number}_${monthLabel}.pdf`.replace(/\//g, '-');
+  const fileContent = await FileSystem.readAsStringAsync(localPath, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  const boundary = 'srecha_wms_boundary';
+  const metadata = JSON.stringify({
+    name: filename,
+    mimeType: 'application/pdf',
+    parents: [monthId],
+  });
+
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${metadata}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: application/pdf\r\n` +
+    `Content-Transfer-Encoding: base64\r\n\r\n` +
+    `${fileContent}\r\n` +
+    `--${boundary}--`;
+
+  const uploadRes = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    }
+  );
+
+  if (!uploadRes.ok) {
+    throw new Error('Не удалось загрузить PDF в Google Drive');
+  }
+
+  const uploaded = (await uploadRes.json()) as { id: string };
+  return uploaded.id;
+}

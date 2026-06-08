@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Alert, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { createAct, addActLine, getProductBySku } from '@/src/db/queries';
+import { createAct, addActLine, getProductBySku, getActLines } from '@/src/db/queries';
 import { StepIndicator } from '@/src/components/ui/StepIndicator';
 import { ACT_TYPE_LABELS, TRANSFER_ROUTES, WAREHOUSES } from '@/src/types';
 import type { ActType, WarehouseId } from '@/src/types';
@@ -12,7 +12,10 @@ import { TYPE_OPTIONS } from '@/src/utils/actDisplay';
 
 export default function NewActScreen() {
   const router = useRouter();
-  const { prefill_sku } = useLocalSearchParams<{ prefill_sku?: string }>();
+  const { prefill_sku, prefill_act_id } = useLocalSearchParams<{
+    prefill_sku?: string;
+    prefill_act_id?: string;
+  }>();
   const { currentUser } = useAuthStore();
   const [step, setStep] = useState(1);
   const [type, setType] = useState<ActType | null>(null);
@@ -21,29 +24,22 @@ export default function NewActScreen() {
   const prefillDone = useRef(false);
 
   useEffect(() => {
-    if (!prefill_sku || prefillDone.current) return;
+    if (!prefill_act_id || !prefill_sku || prefillDone.current) return;
     prefillDone.current = true;
 
     (async () => {
       const product = await getProductBySku(prefill_sku);
       if (!product) {
         Alert.alert('Ошибка', `Товар ${prefill_sku} не найден`);
+        prefillDone.current = false;
         return;
       }
 
       setLoading(true);
       try {
-        const { id, number } = await createAct({
-          type: 'receipt',
-          date: Date.now(),
-          warehouse_to: 'WH-01',
-          supplier: product.name,
-          responsible_user: currentUser?.id,
-          checked_by: currentUser?.id,
-        });
-
+        const existingLines = await getActLines(prefill_act_id);
         await addActLine(
-          id,
+          prefill_act_id,
           {
             sku: product.id,
             product_name: product.name,
@@ -53,18 +49,17 @@ export default function NewActScreen() {
             qty_actual: 1,
             price_unit: product.price_opt ?? product.price_rrp ?? 0,
           },
-          1
+          existingLines.length + 1
         );
-
-        router.replace(`/(tabs)/acts/${id}`);
+        router.replace(`/(tabs)/acts/${prefill_act_id}`);
       } catch (e) {
-        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать акт');
+        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось добавить позицию');
         prefillDone.current = false;
       } finally {
         setLoading(false);
       }
     })();
-  }, [prefill_sku, currentUser?.id, router]);
+  }, [prefill_act_id, prefill_sku, router]);
 
   const [form, setForm] = useState({
     supplier: '',
@@ -111,6 +106,26 @@ export default function NewActScreen() {
         notes: form.notes || undefined,
       });
       setPreviewNumber(number);
+
+      if (prefill_sku && !prefill_act_id) {
+        const product = await getProductBySku(prefill_sku);
+        if (product) {
+          await addActLine(
+            id,
+            {
+              sku: product.id,
+              product_name: product.name,
+              category: product.category,
+              unit: 'шт',
+              qty_planned: 1,
+              qty_actual: 1,
+              price_unit: product.price_opt ?? product.price_rrp ?? 0,
+            },
+            1
+          );
+        }
+      }
+
       router.replace(`/(tabs)/acts/${id}`);
     } catch (e) {
       Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать акт');
@@ -121,10 +136,10 @@ export default function NewActScreen() {
 
   const typeLabel = type ? ACT_TYPE_LABELS[type].split('(')[0].trim() : '';
 
-  if (prefill_sku && loading) {
+  if (prefill_act_id && prefill_sku && loading) {
     return (
       <SafeAreaView className="flex-1 bg-background items-center justify-center">
-        <Text className="text-[#555]">Создание акта для {prefill_sku}…</Text>
+        <Text className="text-[#555]">Добавление {prefill_sku} в акт…</Text>
       </SafeAreaView>
     );
   }
@@ -156,6 +171,14 @@ export default function NewActScreen() {
       <ScrollView className="flex-1 bg-content px-5">
         {step === 1 && (
           <>
+            {prefill_sku && !prefill_act_id && (
+              <View className="bg-gold/10 border border-gold/25 rounded-xl p-3 mb-4">
+                <Text className="text-gold text-sm font-medium">Товар: {prefill_sku}</Text>
+                <Text className="text-[#888] text-xs mt-1">
+                  Выберите тип акта — товар будет добавлен в первую строку после создания
+                </Text>
+              </View>
+            )}
             <Text className="text-[11px] text-[#555] uppercase tracking-widest mb-2">Тип документа</Text>
             <View className="flex-row flex-wrap gap-2 mb-6">
               {TYPE_OPTIONS.map((opt) => {

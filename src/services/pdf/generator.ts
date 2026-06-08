@@ -316,3 +316,138 @@ export async function sharePdf(path: string): Promise<void> {
     await Sharing.shareAsync(path, { mimeType: 'application/pdf', dialogTitle: 'Поделиться PDF' });
   }
 }
+
+const INVENTORY_EXTRA_STYLES = `
+  .section-header { background: #1a1a1a; color: #fff; padding: 5px 8px; font-size: 10px; font-weight: bold; }
+  .diff-row { background: #FFF5F5 !important; }
+  .summary-table { width: 100%; margin: 10px 0; font-size: 10px; }
+  .summary-table td { padding: 3px 8px; }
+  .summary-label { color: #666; width: 60%; }
+  .summary-val { font-weight: bold; text-align: right; }
+`;
+
+export interface InventoryPdfData {
+  act: {
+    number: string;
+    period_month: number;
+    period_year: number;
+    date_start: number;
+    date_end?: number;
+    commission?: string;
+    status: string;
+  };
+  lines: Array<{
+    sku: string;
+    product_name: string;
+    warehouse: string;
+    unit: string;
+    qty_accounting: number;
+    qty_actual: number;
+    qty_diff: number;
+    diff_pct: number;
+    reason?: string;
+  }>;
+}
+
+const WH_LABELS: Record<string, string> = {
+  'WH-01': 'WH-01 Склад сырья и приёмки',
+  'WH-02': 'WH-02 Упаковочные материалы',
+  'WH-03': 'WH-03 Склад готовой продукции',
+  'WH-04': 'WH-04 Склад отгрузки',
+};
+
+const WH_ORDER = ['WH-01', 'WH-02', 'WH-03', 'WH-04'];
+
+function fmtMonth(month: number, year: number): string {
+  return format(new Date(year, month - 1, 1), 'LLLL yyyy', { locale: ru });
+}
+
+export function buildInventoryHtml(data: InventoryPdfData): string {
+  const { act, lines } = data;
+  const styles = BASE_STYLES + INVENTORY_EXTRA_STYLES;
+
+  let whSections = '';
+  for (const wh of WH_ORDER) {
+    const whLines = lines.filter((l) => l.warehouse === wh);
+    if (whLines.length === 0) continue;
+
+    const diffCount = whLines.filter((l) => l.qty_diff !== 0).length;
+    let rows = '';
+    whLines.forEach((l, i) => {
+      const diffClass = Math.abs(l.diff_pct) > 5 ? 'diff-row' : '';
+      rows += `<tr class="${diffClass}">
+        <td>${i + 1}</td><td>${l.sku}</td><td>${l.product_name}</td><td>${l.unit}</td>
+        <td>${l.qty_accounting}</td><td>${l.qty_actual}</td>
+        <td>${l.qty_diff > 0 ? '+' : ''}${l.qty_diff}</td><td>${l.diff_pct.toFixed(1)}%</td><td></td>
+      </tr>`;
+      if (l.reason) {
+        rows += `<tr class="reason-row">
+          <td colspan="5"></td>
+          <td colspan="4" style="font-style:italic;color:#666;font-size:8px">Причина: ${l.reason}</td>
+        </tr>`;
+      }
+    });
+
+    whSections += `
+      <tr><td colspan="9" class="section-header">${WH_LABELS[wh] ?? wh}</td></tr>
+      ${rows}
+      <tr><td colspan="9" style="font-size:9px;color:#666;padding:4px 6px">
+        Итог по складу: ${whLines.length} позиций, ${diffCount} с отклонением
+      </td></tr>`;
+  }
+
+  const totalLines = lines.length;
+  const diffLines = lines.filter((l) => l.qty_diff !== 0);
+  const bigDiff = lines.filter((l) => Math.abs(l.diff_pct) > 5).length;
+  const diffPct = totalLines > 0 ? ((diffLines.length / totalLines) * 100).toFixed(1) : '0';
+
+  const statusLabel = act.status === 'closed' ? 'Закрыта' : 'Черновик';
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${styles}</style></head><body>
+    <div class="header"><div class="company">DOO «Srecha»</div></div>
+    <div class="act-title">ИНВЕНТАРИЗАЦИОННАЯ ВЕДОМОСТЬ <span class="act-number">${act.number}</span></div>
+    <table class="meta-table">
+      <tr><td class="meta-label">Период:</td><td>${fmtMonth(act.period_month, act.period_year)}</td></tr>
+      <tr><td class="meta-label">Дата начала:</td><td>${fmtDate(act.date_start)}</td></tr>
+      <tr><td class="meta-label">Дата окончания:</td><td>${act.date_end ? fmtDate(act.date_end) : '—'}</td></tr>
+      <tr><td class="meta-label">Комиссия:</td><td>${act.commission ?? '—'}</td></tr>
+      <tr><td class="meta-label">Статус:</td><td>${statusLabel}</td></tr>
+    </table>
+    <table class="lines-table">
+      <thead><tr>
+        <th>№</th><th>SKU</th><th>Наименование</th><th>Ед.</th>
+        <th>Остаток учётный</th><th>Остаток факт</th><th>Разница</th><th>%</th><th>Причина</th>
+      </tr></thead>
+      <tbody>${whSections}</tbody>
+    </table>
+    <table class="summary-table">
+      <tr><td class="summary-label">Всего позиций:</td><td class="summary-val">${totalLines}</td></tr>
+      <tr><td class="summary-label">С отклонением:</td><td class="summary-val">${diffLines.length} (${diffPct}%)</td></tr>
+      <tr><td class="summary-label">Общее отклонение &gt; 5%:</td><td class="summary-val">${bigDiff}</td></tr>
+    </table>
+    <div style="margin-top:24px">
+      <div style="font-size:10px;margin-bottom:8px">Подписи комиссии:</div>
+      <div class="signatures">
+        <div class="sig-block"><div class="sig-line"></div></div>
+        <div class="sig-block"><div class="sig-line"></div></div>
+        <div class="sig-block"><div class="sig-line"></div></div>
+      </div>
+    </div>
+    <div class="footer">Srecha WMS · ${format(new Date(), 'dd.MM.yyyy HH:mm')}</div>
+  </body></html>`;
+}
+
+export async function generateInventoryPdf(data: InventoryPdfData): Promise<string> {
+  const html = buildInventoryHtml(data);
+  const { uri } = await Print.printToFileAsync({ html, base64: false });
+
+  const actsDir = `${FileSystem.documentDirectory ?? ''}acts/`;
+  await FileSystem.makeDirectoryAsync(actsDir, { intermediates: true });
+
+  const monthPadded = String(data.act.period_month).padStart(2, '0');
+  const filename = `${data.act.number}_${data.act.period_year}-${monthPadded}.pdf`.replace(/\//g, '-');
+  const destPath = `${actsDir}${filename}`;
+
+  await FileSystem.moveAsync({ from: uri, to: destPath });
+  return destPath;
+}
