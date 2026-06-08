@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import * as Crypto from 'expo-crypto';
 
 export const receiptActSchema = z.object({
   date: z.number(),
@@ -21,7 +22,7 @@ export const transferActSchema = z.object({
 export const packagingActSchema = z.object({
   date: z.number(),
   packaging_type: z.string().min(1),
-  sku_finished: z.string().min(1),
+  sku_finished: z.string().min(1, 'Укажите SKU готовой продукции'),
   responsible_user: z.string().min(1),
   notes: z.string().optional(),
 });
@@ -53,7 +54,9 @@ export const pinSchema = z
   .length(4, 'PIN должен содержать 4 цифры')
   .regex(/^\d{4}$/, 'Только цифры');
 
-export function hashPin(pin: string): string {
+const PIN_SALT = 'srecha_wms_2025';
+
+function legacyHashPin(pin: string): string {
   let hash = 0;
   for (let i = 0; i < pin.length; i++) {
     hash = (hash << 5) - hash + pin.charCodeAt(i);
@@ -62,6 +65,12 @@ export function hashPin(pin: string): string {
   return String(hash);
 }
 
-export function verifyPin(pin: string, hash: string): boolean {
-  return hashPin(pin) === hash;
+export async function hashPin(pin: string): Promise<string> {
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin + PIN_SALT);
+}
+
+export async function verifyPin(pin: string, hash: string): Promise<boolean> {
+  const computed = await hashPin(pin);
+  if (computed === hash) return true;
+  return legacyHashPin(pin) === hash;
 }

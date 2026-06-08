@@ -1,18 +1,21 @@
 import { useCallback, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import Svg, { Path } from 'react-native-svg';
 import { useAuthStore } from '@/src/store/authStore';
 import { useSyncStore } from '@/src/store/syncStore';
-import { getActStats, getRecentActsWithDetails } from '@/src/db/queries';
+import { getActStats, getRecentActsWithDetails, createAct, addActLine } from '@/src/db/queries';
 import { Avatar } from '@/src/components/ui/Avatar';
 import { SyncBadge } from '@/src/components/ui/SyncBadge';
 import { StatusBadge } from '@/src/components/ui/StatusBadge';
+import { VoiceInput, MicIcon } from '@/src/components/ui/VoiceInput';
 import { ACT_TYPE_ICONS, ACT_TYPE_ICON_BG, getActMeta } from '@/src/utils/actDisplay';
 import { WAREHOUSES } from '@/src/types';
 import type { ActStatus } from '@/src/types';
+import type { VoiceCommand } from '@/src/services/voice/parser';
 
 const WH_SHORT = [
   { id: 'WH-01', label: 'Приём' },
@@ -40,6 +43,50 @@ export default function DashboardScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const handleVoiceCommand = async (cmd: VoiceCommand) => {
+    if (cmd.type === 'unknown' || !cmd.sku) {
+      Alert.alert('Не понял команду', cmd.suggestion ?? 'Попробуйте ещё раз');
+      return;
+    }
+
+    const actTypeMap = {
+      shipment: 'shipment_b2b' as const,
+      receipt: 'receipt' as const,
+      transfer: 'transfer' as const,
+    };
+
+    const actType = actTypeMap[cmd.type];
+    if (!actType) {
+      Alert.alert('Не понял команду', cmd.suggestion ?? 'Попробуйте ещё раз');
+      return;
+    }
+
+    const { id } = await createAct({
+      type: actType,
+      date: cmd.date ?? Date.now(),
+      responsible_user: currentUser?.id,
+      notes: `Голос: «${cmd.raw}»`,
+      warehouse_to: actType === 'receipt' ? 'WH-01' : actType === 'transfer' ? 'WH-03' : undefined,
+      warehouse_from: actType === 'transfer' ? 'WH-01' : undefined,
+    });
+
+    if (cmd.sku && cmd.qty) {
+      await addActLine(
+        id,
+        {
+          sku: cmd.sku,
+          product_name: cmd.productName ?? cmd.sku,
+          unit: cmd.unit ?? 'шт',
+          qty_planned: cmd.qty,
+          qty_actual: cmd.qty,
+        },
+        1
+      );
+    }
+
+    router.push(`/(tabs)/acts/${id}`);
   };
 
   const warehouseLabel = currentUser?.warehouse_default
@@ -110,22 +157,70 @@ export default function DashboardScreen() {
 
           <Text className="text-[12px] text-[#555] uppercase tracking-widest mb-2.5">Быстрые действия</Text>
           <View className="flex-row gap-2 mb-4">
-            {[
-              { label: 'Новый акт', icon: '＋', bg: 'bg-gold/10', color: 'text-gold', route: '/(tabs)/acts/new' as const },
-              { label: 'Сканировать', icon: '⬡', bg: 'bg-accent-blue/10', color: 'text-accent-blue', route: '/(tabs)/scanner' as const },
-              { label: 'Инвентаризация', icon: '≡', bg: 'bg-success/10', color: 'text-success', route: '/(tabs)/inventory' as const },
-            ].map((action) => (
-              <Pressable
-                key={action.label}
-                onPress={() => router.push(action.route)}
-                className="flex-1 bg-surface rounded-xl p-3 border border-border items-center gap-2"
-              >
-                <View className={`w-[38px] h-[38px] rounded-[10px] ${action.bg} items-center justify-center`}>
-                  <Text className={`text-lg ${action.color}`}>{action.icon}</Text>
-                </View>
-                <Text className="text-[11px] text-[#888] text-center">{action.label}</Text>
-              </Pressable>
-            ))}
+            <Pressable
+              onPress={() => router.push('/(tabs)/acts/new')}
+              className="flex-1 bg-surface border border-border rounded-xl py-3 items-center gap-1.5"
+            >
+              <View className="w-[38px] h-[38px] rounded-[10px] bg-gold/20 items-center justify-center">
+                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M12 5v14M5 12h14"
+                    stroke="#C8A96E"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </Svg>
+              </View>
+              <Text className="text-[10px] text-[#888]">Новый акт</Text>
+            </Pressable>
+
+            <VoiceInput
+              onCommand={handleVoiceCommand}
+              renderTrigger={(onPress, isActive) => (
+                <Pressable
+                  onPress={onPress}
+                  className={`flex-1 rounded-xl py-3 items-center gap-1.5 ${
+                    isActive ? 'bg-gold/15 border border-gold/60' : 'bg-surface border border-gold/30'
+                  }`}
+                  style={{ backgroundColor: isActive ? '#C8A96E22' : '#C8A96E08' }}
+                >
+                  <View
+                    className="w-[38px] h-[38px] rounded-[10px] items-center justify-center"
+                    style={{ backgroundColor: '#C8A96E18', borderWidth: 1, borderColor: '#C8A96E33' }}
+                  >
+                    <MicIcon size={20} color={isActive ? '#C8A96E' : '#C8A96ECC'} />
+                  </View>
+                  <Text className="text-[10px]" style={{ color: '#C8A96E' }}>
+                    {isActive ? 'Слушаю…' : 'Голос'}
+                  </Text>
+                </Pressable>
+              )}
+            />
+
+            <Pressable
+              onPress={() => router.push('/(tabs)/inventory')}
+              className="flex-1 bg-surface border border-border rounded-xl py-3 items-center gap-1.5"
+            >
+              <View className="w-[38px] h-[38px] rounded-[10px] bg-success/10 items-center justify-center">
+                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M9 11l3 3L22 4"
+                    stroke="#5BA85F"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <Path
+                    d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"
+                    stroke="#5BA85F"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              </View>
+              <Text className="text-[10px] text-[#888]">Инвентаризация</Text>
+            </Pressable>
           </View>
 
           <Text className="text-[12px] text-[#555] uppercase tracking-widest mb-2.5">Последние акты</Text>

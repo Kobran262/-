@@ -19,6 +19,18 @@ import { WAREHOUSES, type WarehouseId } from '@/src/types';
 
 type Mode = 'view' | 'edit' | 'new';
 
+function generateEan13(): string {
+  const prefix = '860';
+  const rand = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
+  const base = prefix + rand;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(base[i], 10) * (i % 2 === 0 ? 1 : 3);
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return base + check;
+}
+
 export default function ProductDetailScreen() {
   const { id, mode: modeParam } = useLocalSearchParams<{ id: string; mode?: string }>();
   const router = useRouter();
@@ -189,7 +201,8 @@ export default function ProductDetailScreen() {
       <ScrollView className="flex-1 px-5">
         <Field label="SKU (id)" readonly={mode !== 'new'}>
           <TextInput
-            className="text-foreground font-mono text-sm p-0"
+            className="text-foreground font-mono text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={form.id}
             editable={mode === 'new'}
             onChangeText={(v) => updateField('id', v)}
@@ -200,7 +213,8 @@ export default function ProductDetailScreen() {
 
         <Field label="Название">
           <TextInput
-            className="text-foreground text-sm p-0"
+            className="text-foreground text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={form.name}
             editable={!readonly}
             onChangeText={(v) => updateField('name', v)}
@@ -210,7 +224,8 @@ export default function ProductDetailScreen() {
 
         <Field label="Название (рус.)">
           <TextInput
-            className="text-foreground text-sm p-0"
+            className="text-foreground text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={form.name_ru}
             editable={!readonly}
             onChangeText={(v) => updateField('name_ru', v)}
@@ -256,7 +271,8 @@ export default function ProductDetailScreen() {
 
         <Field label="Тип упаковки">
           <TextInput
-            className="text-foreground text-sm p-0"
+            className="text-foreground text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={form.packaging}
             editable={!readonly}
             onChangeText={(v) => updateField('packaging', v)}
@@ -267,7 +283,8 @@ export default function ProductDetailScreen() {
 
         <Field label="Вес, г">
           <TextInput
-            className="text-foreground text-sm p-0"
+            className="text-foreground text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={form.weight_g}
             editable={!readonly}
             keyboardType="numeric"
@@ -278,7 +295,8 @@ export default function ProductDetailScreen() {
 
         <Field label="РРЦ с НДС, din">
           <TextInput
-            className="text-foreground text-sm p-0"
+            className="text-foreground text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={form.price_rrp}
             editable={!readonly}
             keyboardType="numeric"
@@ -289,7 +307,8 @@ export default function ProductDetailScreen() {
 
         <Field label="Цена опт с НДС">
           <TextInput
-            className="text-foreground text-sm p-0"
+            className="text-foreground text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={String(priceOpt.toFixed(2))}
             editable={!readonly}
             keyboardType="numeric"
@@ -308,7 +327,8 @@ export default function ProductDetailScreen() {
 
         <Field label="Скидка опт %">
           <TextInput
-            className="text-foreground text-sm p-0"
+            className="text-foreground text-sm"
+            style={{ minHeight: 44, textAlignVertical: 'center' }}
             value={form.discount_pct}
             editable={!readonly}
             keyboardType="numeric"
@@ -335,26 +355,43 @@ export default function ProductDetailScreen() {
           ))}
         </View>
 
-        <Field label="Штрихкод">
-          <View className="flex-row items-center gap-2">
-            <TextInput
-              className="flex-1 text-foreground text-sm p-0"
-              value={form.barcode}
-              editable={!readonly}
-              onChangeText={(v) => updateField('barcode', v)}
-              placeholderTextColor="#444"
-            />
-            {!readonly && (
-              <Pressable onPress={openScanner} className="bg-gold/10 border border-gold/25 rounded px-2 py-1">
-                <Text className="text-gold text-xs">Сканировать</Text>
-              </Pressable>
-            )}
+        <View className="flex-row gap-2 items-end mb-2">
+          <View className="flex-1">
+            <Field label="Штрихкод">
+              <View className="flex-row items-center gap-2">
+                <TextInput
+                  className="flex-1 text-foreground text-sm"
+                  style={{ minHeight: 44, textAlignVertical: 'center' }}
+                  value={form.barcode}
+                  editable={!readonly}
+                  onChangeText={(v) => updateField('barcode', v)}
+                  placeholderTextColor="#444"
+                />
+                {!readonly && (
+                  <Pressable
+                    onPress={openScanner}
+                    className="bg-gold/10 border border-gold/25 rounded px-2 py-2"
+                  >
+                    <Text className="text-gold text-xs">Сканировать</Text>
+                  </Pressable>
+                )}
+              </View>
+            </Field>
           </View>
-        </Field>
+          {(mode === 'new' || mode === 'edit') && (
+            <Pressable
+              onPress={() => updateField('barcode', generateEan13())}
+              className="bg-surface border border-border rounded-lg px-3 py-2.5 mb-2"
+            >
+              <Text className="text-gold text-xs">EAN-13</Text>
+            </Pressable>
+          )}
+        </View>
 
         <Field label="Примечание">
           <TextInput
-            className="text-foreground text-sm p-0 min-h-[60px]"
+            className="text-foreground text-sm"
+            style={{ minHeight: 60, textAlignVertical: 'top' }}
             value={form.notes}
             editable={!readonly}
             multiline
@@ -436,12 +473,17 @@ function Field({
   readonly?: boolean;
 }) {
   return (
-    <View className="bg-surface rounded-[10px] border border-border px-3.5 py-2.5 mb-2">
-      <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1">
+    <View className="mb-2">
+      <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1 ml-0.5">
         {label}
-        {ro ? ' (только чтение)' : ''}
+        {ro ? ' · только чтение' : ''}
       </Text>
-      {children}
+      <View
+        className="bg-surface rounded-[10px] border border-border px-3.5"
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        {children}
+      </View>
     </View>
   );
 }

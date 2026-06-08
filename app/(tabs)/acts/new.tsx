@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Alert, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, Alert, Pressable, TextInput, type KeyboardTypeOptions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { createAct, addActLine, getProductBySku, getActLines } from '@/src/db/queries';
@@ -9,6 +9,12 @@ import type { ActType, WarehouseId } from '@/src/types';
 import { useAuthStore } from '@/src/store/authStore';
 import { PACKAGING_TYPE_OPTIONS } from '@/src/utils/bom';
 import { TYPE_OPTIONS } from '@/src/utils/actDisplay';
+import {
+  receiptActSchema,
+  transferActSchema,
+  packagingActSchema,
+  shipmentActSchema,
+} from '@/src/utils/validation';
 
 export default function NewActScreen() {
   const router = useRouter();
@@ -21,6 +27,7 @@ export default function NewActScreen() {
   const [type, setType] = useState<ActType | null>(null);
   const [loading, setLoading] = useState(false);
   const [previewNumber, setPreviewNumber] = useState('новый');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const prefillDone = useRef(false);
 
   useEffect(() => {
@@ -77,7 +84,41 @@ export default function NewActScreen() {
 
   const updateForm = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
+  const validateStep2 = (): boolean => {
+    if (!type) return false;
+    const base = {
+      date: Date.now(),
+      responsible_user: currentUser?.id ?? '',
+    };
+
+    const schemaMap = {
+      receipt: receiptActSchema,
+      transfer: transferActSchema,
+      packaging_card: packagingActSchema,
+      shipment_b2b: shipmentActSchema,
+      shipment_ecom: shipmentActSchema,
+    } as const;
+
+    const schema = schemaMap[type as keyof typeof schemaMap];
+    if (!schema) return true;
+
+    const result = schema.safeParse({ ...base, ...form });
+    if (result.success) {
+      setErrors({});
+      return true;
+    }
+
+    const newErrors: Record<string, string> = {};
+    result.error.issues.forEach((e) => {
+      const field = String(e.path[0]);
+      newErrors[field] = e.message;
+    });
+    setErrors(newErrors);
+    return false;
+  };
+
   const handleCreate = async () => {
+    if (!validateStep2()) return;
     if (!type) return;
     setLoading(true);
     try {
@@ -215,6 +256,9 @@ export default function NewActScreen() {
             {type === 'receipt' && (
               <View className="gap-2.5 mb-4">
                 <FieldBox label="Поставщик" value={form.supplier} onChange={(v) => updateForm('supplier', v)} />
+                {errors.supplier && (
+                  <Text className="text-danger text-xs ml-1 -mt-1 mb-1">{errors.supplier}</Text>
+                )}
                 <FieldBox label="Номер инвойса" value={form.invoice_number} onChange={(v) => updateForm('invoice_number', v)} />
               </View>
             )}
@@ -272,19 +316,25 @@ export default function NewActScreen() {
                   </Pressable>
                 ))}
                 <FieldBox label="SKU готовой продукции" value={form.sku_finished} onChange={(v) => updateForm('sku_finished', v)} />
+                {errors.sku_finished && (
+                  <Text className="text-danger text-xs ml-1 -mt-1 mb-1">{errors.sku_finished}</Text>
+                )}
               </View>
             )}
 
             {type === 'shipment_b2b' && (
               <View className="gap-2.5 mb-4">
                 <FieldBox label="Клиент" value={form.client_name} onChange={(v) => updateForm('client_name', v)} />
+                {errors.client_name && (
+                  <Text className="text-danger text-xs ml-1 -mt-1 mb-1">{errors.client_name}</Text>
+                )}
                 <FieldBox label="Контакт" value={form.client_contact} onChange={(v) => updateForm('client_contact', v)} />
                 <FieldBox label="Адрес доставки" value={form.client_address} onChange={(v) => updateForm('client_address', v)} />
                 <FieldBox label="Инвойс клиенту" value={form.invoice_number} onChange={(v) => updateForm('invoice_number', v)} />
               </View>
             )}
 
-            <FieldBox label="Примечание" value={form.notes} onChange={(v) => updateForm('notes', v)} />
+            <FieldBox label="Примечание" value={form.notes} onChange={(v) => updateForm('notes', v)} multiline />
           </>
         )}
         <View className="h-24" />
@@ -337,22 +387,31 @@ function FieldBox({
   value,
   onChange,
   placeholder,
+  keyboardType,
+  multiline,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  keyboardType?: KeyboardTypeOptions;
+  multiline?: boolean;
 }) {
   return (
-    <View className="bg-surface rounded-[10px] border border-border px-3.5 py-2.5">
-      <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1">{label}</Text>
-      <TextInput
-        className="text-sm text-foreground p-0"
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor="#444"
-      />
+    <View className="mb-2">
+      <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1 ml-0.5">{label}</Text>
+      <View className="bg-surface rounded-[10px] border border-border px-3.5">
+        <TextInput
+          className="text-sm text-foreground"
+          style={{ minHeight: 44, textAlignVertical: multiline ? 'top' : 'center' }}
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor="#444"
+          keyboardType={keyboardType}
+          multiline={multiline}
+        />
+      </View>
     </View>
   );
 }
@@ -369,11 +428,12 @@ function WhTag({
   return (
     <Pressable
       onPress={onPress}
-      className={`rounded-md px-2 py-1 border ${
-        active ? 'bg-gold/10 border-gold/30' : 'bg-surface border-border'
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      className={`rounded-lg px-3 py-2.5 border min-w-[70px] items-center ${
+        active ? 'bg-gold/10 border-gold/40' : 'bg-surface border-border'
       }`}
     >
-      <Text className={`text-xs font-medium ${active ? 'text-gold' : 'text-gold/70'}`}>{label}</Text>
+      <Text className={`text-sm font-medium ${active ? 'text-gold' : 'text-gold/70'}`}>{label}</Text>
     </Pressable>
   );
 }

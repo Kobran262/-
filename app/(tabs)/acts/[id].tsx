@@ -1,13 +1,16 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import {
   getActById,
   getActLines,
   addActLine,
   closeAct,
   getProductsForAct,
+  getProductByBarcode,
   updateActLine,
 } from '@/src/db/queries';
 import { generateActPdf, sharePdf } from '@/src/services/pdf/generator';
@@ -30,11 +33,17 @@ export default function ActDetailScreen() {
   const { gdriveAutoUpload } = useSettingsStore();
   const [act, setAct] = useState<Awaited<ReturnType<typeof getActById>> | null>(null);
   const [lines, setLines] = useState<Awaited<ReturnType<typeof getActLines>>>([]);
-  const [showAddLine, setShowAddLine] = useState(false);
+  const [addMode, setAddMode] = useState<'search' | 'scan' | null>(null);
+  const [scanScanned, setScanScanned] = useState(false);
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState<Awaited<ReturnType<typeof getProductsForAct>>>([]);
   const [signature, setSignature] = useState('');
   const [loading, setLoading] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+
+  useEffect(() => {
+    if (!permission?.granted) requestPermission();
+  }, [permission]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -62,14 +71,17 @@ export default function ActDetailScreen() {
     setProducts(await getProductsForAct(buildContext(act), q));
   };
 
-  const openAddLine = async () => {
+  const openAddSearch = async () => {
     if (!act) return;
-    setShowAddLine(true);
+    setAddMode('search');
+    setSearch('');
     setProducts(await getProductsForAct(buildContext(act)));
   };
 
-  const handleAddLine = async (product: Awaited<ReturnType<typeof getProductsForAct>>[number]) => {
-    if (!id || !act) return;
+  const handleAddLine = async (
+    product: Awaited<ReturnType<typeof getProductsForAct>>[number] | Awaited<ReturnType<typeof getProductByBarcode>>
+  ) => {
+    if (!id || !act || !product) return;
     await addActLine(
       id,
       {
@@ -83,7 +95,7 @@ export default function ActDetailScreen() {
       },
       lines.length + 1
     );
-    setShowAddLine(false);
+    setAddMode(null);
     setSearch('');
     load();
   };
@@ -338,27 +350,54 @@ export default function ActDetailScreen() {
 
         {isDraft && (
           <>
-            {showAddLine ? (
+            {!addMode ? (
+              <View className="flex-row gap-2 mb-2">
+                <Pressable
+                  onPress={openAddSearch}
+                  className="flex-1 border border-dashed border-border rounded-[10px] py-3 flex-row items-center justify-center gap-2"
+                >
+                  <Text className="text-[#555] text-sm">🔍 Поиск</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setAddMode('scan');
+                    setScanScanned(false);
+                  }}
+                  className="flex-1 border border-dashed border-gold/30 rounded-[10px] py-3 flex-row items-center justify-center gap-2 bg-gold/5"
+                >
+                  <Text className="text-gold text-sm">⬡ Сканировать</Text>
+                </Pressable>
+              </View>
+            ) : addMode === 'search' ? (
               <View className="bg-surface rounded-[10px] border border-border p-3 mb-2">
                 <TextInput
-                  className="text-foreground text-sm mb-2"
-                  placeholder="Поиск товара..."
+                  className="text-foreground text-sm mb-2 bg-background rounded-lg px-3"
+                  style={{ minHeight: 40 }}
+                  placeholder="Поиск по названию или SKU..."
                   placeholderTextColor="#444"
                   value={search}
                   onChangeText={searchProducts}
                   autoFocus
                 />
+                {products.length > 0 && (
+                  <Text className="text-[10px] text-[#555] mb-1">
+                    Показано {Math.min(12, products.length)} из {products.length}
+                    {products.length > 12 ? ' — уточните запрос' : ''}
+                  </Text>
+                )}
                 {(() => {
                   let lastPriority = -1;
                   return products.slice(0, 12).map((p) => {
-                    const showDivider = p.priority !== lastPriority && lastPriority !== -1;
+                    const showDiv = p.priority !== lastPriority && lastPriority !== -1;
                     lastPriority = p.priority;
                     return (
                       <View key={p.id}>
-                        {showDivider && <View className="border-t border-border my-1" />}
+                        {showDiv && <View className="border-t border-border my-1" />}
                         <Pressable
-                          onPress={() => handleAddLine(p)}
-                          className="py-2 border-b border-border"
+                          onPress={() => {
+                            handleAddLine(p);
+                          }}
+                          className="py-2.5 border-b border-border"
                         >
                           <Text className="text-gold text-[9px]">{p.id}</Text>
                           <Text className="text-foreground text-sm">{p.name}</Text>
@@ -370,18 +409,46 @@ export default function ActDetailScreen() {
                     );
                   });
                 })()}
-                <Pressable onPress={() => setShowAddLine(false)} className="mt-2">
+                <Pressable onPress={() => setAddMode(null)} className="mt-2 py-1">
                   <Text className="text-gold text-center text-sm">Отмена</Text>
                 </Pressable>
               </View>
             ) : (
-              <Pressable
-                onPress={openAddLine}
-                className="border border-dashed border-border rounded-[10px] p-3 flex-row items-center justify-center gap-2 mb-2"
-              >
-                <Text className="text-[#444] text-lg">＋</Text>
-                <Text className="text-[13px] text-[#555]">Добавить позицию или сканировать</Text>
-              </Pressable>
+              <View className="mb-2 rounded-[10px] overflow-hidden" style={{ height: 200 }}>
+                <CameraView
+                  style={{ flex: 1 }}
+                  barcodeScannerSettings={{
+                    barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr'],
+                  }}
+                  onBarcodeScanned={
+                    scanScanned
+                      ? undefined
+                      : async ({ data }) => {
+                          setScanScanned(true);
+                          await Haptics.notificationAsync(
+                            Haptics.NotificationFeedbackType.Success
+                          );
+                          const found = await getProductByBarcode(data);
+                          if (found) {
+                            await handleAddLine(found);
+                            setAddMode(null);
+                          } else {
+                            Alert.alert(
+                              'Штрихкод не найден',
+                              `${data}\nПривяжите его к SKU в разделе Сканер`,
+                              [{ text: 'OK', onPress: () => setScanScanned(false) }]
+                            );
+                          }
+                        }
+                  }
+                />
+                <Pressable
+                  onPress={() => setAddMode(null)}
+                  className="absolute top-2 right-2 bg-black/50 rounded-lg px-3 py-1.5"
+                >
+                  <Text className="text-white text-sm">Отмена</Text>
+                </Pressable>
+              </View>
             )}
 
             {diffLines.length > 0 && (
@@ -399,17 +466,20 @@ export default function ActDetailScreen() {
               </View>
             )}
 
-            <View className="bg-surface rounded-[10px] border border-border px-3.5 py-2.5 mb-3">
-              <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1">
+            <View className="mb-3">
+              <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1 ml-0.5">
                 Подпись (ФИО)
               </Text>
-              <TextInput
-                className="text-sm text-foreground p-0"
-                value={signature}
-                onChangeText={setSignature}
-                placeholder="Иван И."
-                placeholderTextColor="#444"
-              />
+              <View className="bg-surface rounded-[10px] border border-border px-3.5">
+                <TextInput
+                  className="text-sm text-foreground"
+                  style={{ minHeight: 44, textAlignVertical: 'center' }}
+                  value={signature}
+                  onChangeText={setSignature}
+                  placeholder="Иван И."
+                  placeholderTextColor="#444"
+                />
+              </View>
             </View>
           </>
         )}

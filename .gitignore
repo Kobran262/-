@@ -41,3 +41,6 @@ yarn-error.*
 /ios
 /android
 /tmp/
+
+# Whisper models (140–465 MB)
+assets/models/

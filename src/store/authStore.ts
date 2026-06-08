@@ -74,7 +74,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (rows.length === 0) return false;
     const user = rows[0];
-    if (!verifyPin(pin, user.pin_hash)) return false;
+    if (!(await verifyPin(pin, user.pin_hash))) return false;
     await SecureStore.setItemAsync(SESSION_KEY, userId);
     set({
       currentUser: {

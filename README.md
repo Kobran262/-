@@ -58,6 +58,35 @@ GOOGLE_OAUTH_CLIENT_ID=...
 | Мария П. | 1234 | warehouse |
 | Петар К. | 1234 | warehouse |
 
+## Голосовой ввод (Whisper)
+
+Offline-распознавание речи через [whisper.rn](https://github.com/mybigday/whisper.rn). Не работает в Expo Go — только development/release build.
+
+### Подготовка модели
+
+```bash
+npm run download-whisper-base   # 145 МБ, рекомендуется для TestFlight
+# или
+npm run download-whisper-small  # 465 МБ, лучший русский
+```
+
+`npm run testflight` скачивает `ggml-base.bin` автоматически, если файла нет.
+
+### Сборка с голосом
+
+```bash
+npm run ensure-whisper-model
+npx expo prebuild --platform ios
+npm run ios:release
+```
+
+При первом запуске без bundled-модели приложение скачает ~145 МБ в Documents (нужен интернет один раз).
+
+### Разрешения
+
+- iOS: `NSMicrophoneUsageDescription` в Info.plist
+- Android: `RECORD_AUDIO`
+
 ## Стек
 
 - Expo SDK 56, TypeScript, Expo Router

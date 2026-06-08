@@ -10,6 +10,7 @@ import { seedDatabase } from '@/src/db/seed';
 import { useAuthStore } from '@/src/store/authStore';
 import { useSyncStore } from '@/src/store/syncStore';
 import { useSettingsStore } from '@/src/store/settingsStore';
+import { initVoice } from '@/src/services/voice/recorder';
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,10 @@ export default function RootLayout() {
   const { init: initSettings } = useSettingsStore();
   const segments = useSegments();
   const router = useRouter();
+
+  useEffect(() => {
+    initVoice().catch((e) => console.warn('Whisper init failed:', e));
+  }, []);
 
   useEffect(() => {
     (async () => {

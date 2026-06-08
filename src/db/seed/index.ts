@@ -24,8 +24,6 @@ const DEFAULT_USERS = [
   { id: 'user-petar', name: 'Петар К.', role: 'warehouse', warehouse_default: 'WH-04' },
 ] as const;
 
-const DEFAULT_PIN_HASH = hashPin('1234');
-
 function toProductRow(seed: SeedProduct, updatedAt: number) {
   return {
     id: seed.id,
@@ -61,12 +59,14 @@ export async function seedDatabase(): Promise<void> {
   const allSeeds = [...INITIAL_PRODUCTS, ...INITIAL_MATERIALS];
   await db.insert(products).values(allSeeds.map((seed) => toProductRow(seed, now)));
 
+  const defaultPinHash = await hashPin('1234');
+
   await db.insert(users).values(
     DEFAULT_USERS.map((user) => ({
       id: user.id,
       name: user.name,
       role: user.role,
-      pin_hash: DEFAULT_PIN_HASH,
+      pin_hash: defaultPinHash,
       warehouse_default: user.warehouse_default,
       created_at: now,
       updated_at: now,

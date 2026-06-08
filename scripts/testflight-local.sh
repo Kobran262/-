@@ -12,6 +12,7 @@ EXPORT_DIR="$BUILD_DIR/ios/build/export"
 IPA="$EXPORT_DIR/SrechaWMS.ipa"
 
 echo "→ Синхронизация проекта..."
+bash "$SRC/scripts/ensure-whisper-model.sh"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 rsync -a --exclude node_modules --exclude ios --exclude .expo "$SRC/" "$BUILD_DIR/"

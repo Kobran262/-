@@ -90,6 +90,12 @@ export default function ProductsCatalogScreen() {
           <Text className="text-[#888]">⚙</Text>
         </Pressable>
         <Pressable
+          onPress={() => router.push('/(tabs)/products/barcodes')}
+          className="bg-surface border border-border rounded-[10px] px-2.5 py-2"
+        >
+          <Text className="text-gold text-xs">🖨 Штрихкоды</Text>
+        </Pressable>
+        <Pressable
           onPress={() => router.push({ pathname: '/(tabs)/products/[id]', params: { id: 'new', mode: 'new' } })}
           className="bg-gold rounded-[10px] px-3 py-2"
         >

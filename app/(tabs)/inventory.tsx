@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { getInventoryActs, createInventoryAct } from '@/src/db/queries';
-import { sql, eq } from 'drizzle-orm';
+import { sql, inArray } from 'drizzle-orm';
 import { getDb } from '@/src/db/client';
 import { inventory_lines } from '@/src/db/schema';
 
@@ -45,17 +45,24 @@ export default function InventoryScreen() {
 
   const load = useCallback(async () => {
     const list = await getInventoryActs();
+    if (list.length === 0) {
+      setActs([]);
+      return;
+    }
+
     const db = getDb();
-    const withCounts = await Promise.all(
-      list.map(async (act) => {
-        const result = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(inventory_lines)
-          .where(eq(inventory_lines.inventory_id, act.id));
-        return { ...act, lineCount: result[0]?.count ?? 0 };
+    const ids = list.map((a) => a.id);
+    const counts = await db
+      .select({
+        inventory_id: inventory_lines.inventory_id,
+        count: sql<number>`count(*)`,
       })
-    );
-    setActs(withCounts);
+      .from(inventory_lines)
+      .where(inArray(inventory_lines.inventory_id, ids))
+      .groupBy(inventory_lines.inventory_id);
+
+    const countMap = new Map(counts.map((c) => [c.inventory_id, c.count]));
+    setActs(list.map((act) => ({ ...act, lineCount: countMap.get(act.id) ?? 0 })));
   }, []);
 
   useFocusEffect(

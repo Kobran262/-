@@ -19,13 +19,18 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   icon: './assets/images/icon.png',
   scheme: 'srechawms',
   userInterfaceStyle: 'dark',
+  assetBundlePatterns: ['assets/**/*'],
   ios: {
     bundleIdentifier: 'com.srecha.wms',
-    buildNumber: '7',
+    buildNumber: '8',
     appleTeamId: '54VMCQN8D8',
     supportsTablet: false,
+    entitlements: {
+      'com.apple.developer.kernel.extended-virtual-addressing': true,
+    },
     infoPlist: {
       NSCameraUsageDescription: 'Для сканирования штрихкодов товаров',
+      NSMicrophoneUsageDescription: 'Для голосового ввода команд на складе',
       NSFaceIDUsageDescription: 'Для быстрого входа в приложение',
       ...(googleScheme
         ? {
@@ -40,7 +45,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   },
   android: {
     package: 'com.srecha.wms',
-    permissions: ['CAMERA', 'VIBRATE'],
+    permissions: ['CAMERA', 'VIBRATE', 'RECORD_AUDIO'],
     adaptiveIcon: {
       backgroundColor: '#0F0F0F',
       foregroundImage: './assets/images/android-icon-foreground.png',
@@ -56,6 +61,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-camera',
       {
         cameraPermission: 'Для сканирования штрихкодов товаров',
+        microphonePermission: 'Для голосового ввода команд на складе',
       },
     ],
     [
