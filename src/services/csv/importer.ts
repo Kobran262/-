@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import Papa from 'papaparse';
 import { eq } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from '@/src/utils/uuid';
 import { getDb } from '@/src/db/client';
 import { products, movements } from '@/src/db/schema';
 import { previewCsv, validateProductsCsv } from './exporter';

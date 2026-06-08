@@ -2,7 +2,7 @@ import { eq, desc, and, like, or, gte, lte, sql } from 'drizzle-orm';
 import { getDb } from '@/src/db/client';
 import { acts, act_lines, products, movements, users, inventory_acts, inventory_lines } from '@/src/db/schema';
 import type { ActType, ActStatus } from '@/src/types';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from '@/src/utils/uuid';
 import { generateActNumber, calcQtyDiff, calcLineAmount } from '@/src/utils/actNumbers';
 import { getFullDeviceId } from '@/src/utils/deviceId';
 import { markActForSync } from '@/src/firebase/sync';

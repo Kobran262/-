@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from '@/src/utils/uuid';
 
 const DEVICE_ID_KEY = 'srecha_device_id';
 
