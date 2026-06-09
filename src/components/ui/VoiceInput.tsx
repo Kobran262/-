@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { View, Text, Pressable, Modal, Alert, ActivityIndicator } from 'react-native';
-import { Audio } from 'expo-av';
+import {
+  useAudioRecorder,
+  RecordingPresets,
+} from 'expo-audio';
 import Animated, {
   useSharedValue,
   withRepeat,
@@ -9,7 +12,11 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 import Svg, { Rect, Path, Line } from 'react-native-svg';
-import { recordAndTranscribe } from '@/src/services/voice/recorder';
+import {
+  prepareAudioSession,
+  requestAudioPermission,
+  transcribeRecording,
+} from '@/src/services/voice/recorder';
 import { parseVoiceCommand } from '@/src/services/voice/parser';
 import type { VoiceCommand } from '@/src/services/voice/parser';
 
@@ -52,6 +59,7 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
   const [state, setState] = useState<VoiceState>('idle');
   const [command, setCommand] = useState<VoiceCommand | null>(null);
   const pulse = useSharedValue(1);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulse.value }],
@@ -60,7 +68,7 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
   const startRecording = async () => {
     if (state !== 'idle' || disabled) return;
 
-    const granted = await Audio.requestPermissionsAsync().then((r) => r.status === 'granted');
+    const granted = await requestAudioPermission();
     if (!granted) {
       Alert.alert('Нет доступа к микрофону');
       return;
@@ -70,7 +78,18 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
     pulse.value = withRepeat(withTiming(1.3, { duration: 600, easing: Easing.ease }), -1, true);
 
     try {
-      const result = await recordAndTranscribe(8000, () => {
+      await prepareAudioSession();
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record({ forDuration: 8 });
+      await new Promise((resolve) => setTimeout(resolve, 8200));
+      if (audioRecorder.isRecording) {
+        await audioRecorder.stop();
+      }
+
+      const uri = audioRecorder.uri;
+      if (!uri) throw new Error('Не удалось записать аудио');
+
+      const result = await transcribeRecording(uri, () => {
         setState('transcribing');
         pulse.value = 1;
       });

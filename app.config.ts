@@ -65,6 +65,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
     ],
     [
+      'expo-audio',
+      {
+        microphonePermission: 'Для голосового ввода команд на складе',
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         image: './assets/images/splash-icon.png',

@@ -1,7 +1,10 @@
 import { initWhisper } from 'whisper.rn';
 import type { WhisperContext } from 'whisper.rn';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Audio } from 'expo-av';
+import {
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from 'expo-audio';
 import { getWhisperModelPath } from './model';
 
 let whisperCtx: WhisperContext | null = null;
@@ -24,8 +27,15 @@ export async function initVoice(): Promise<WhisperContext> {
 }
 
 export async function requestAudioPermission(): Promise<boolean> {
-  const { status } = await Audio.requestPermissionsAsync();
-  return status === 'granted';
+  const { granted } = await requestRecordingPermissionsAsync();
+  return granted;
+}
+
+export async function prepareAudioSession(): Promise<void> {
+  await setAudioModeAsync({
+    allowsRecording: true,
+    playsInSilentMode: true,
+  });
 }
 
 export interface TranscribeResult {
@@ -33,25 +43,11 @@ export interface TranscribeResult {
   durationMs: number;
 }
 
-export async function recordAndTranscribe(
-  maxDurationMs = 8000,
+export async function transcribeRecording(
+  uri: string,
   onTranscribeStart?: () => void
 ): Promise<TranscribeResult> {
   const ctx = whisperCtx ?? (await initVoice());
-
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: true,
-    playsInSilentModeIOS: true,
-  });
-
-  const { recording } = await Audio.Recording.createAsync(
-    Audio.RecordingOptionsPresets.HIGH_QUALITY
-  );
-
-  await new Promise((resolve) => setTimeout(resolve, maxDurationMs));
-  await recording.stopAndUnloadAsync();
-  const uri = recording.getURI();
-  if (!uri) throw new Error('Не удалось записать аудио');
 
   onTranscribeStart?.();
 
