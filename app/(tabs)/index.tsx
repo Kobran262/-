@@ -203,7 +203,7 @@ export default function DashboardScreen() {
                   </Animated.View>
                   <Text className="text-[10px]" style={{ color: '#C8A96E' }}>
                     {voiceState === 'recording'
-                      ? 'Слушаю…'
+                      ? 'Стоп'
                       : voiceState === 'transcribing'
                         ? 'Обработка…'
                         : 'Голос'}

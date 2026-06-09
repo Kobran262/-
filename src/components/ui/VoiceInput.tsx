@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useRef, type ReactNode } from 'react';
 import { View, Text, Pressable, Modal, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
@@ -63,6 +63,7 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
   const [command, setCommand] = useState<VoiceCommand | null>(null);
   const pulse = useSharedValue(1);
   const opacity = useSharedValue(1);
+  const recordingEndRef = useRef<(() => void) | null>(null);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const pulseStyle = useAnimatedStyle(() => ({
@@ -80,9 +81,34 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
     setState('transcribing');
   };
 
-  const startRecording = async () => {
-    if (state !== 'idle' || disabled) return;
+  const finishRecordingWait = () => {
+    recordingEndRef.current?.();
+    recordingEndRef.current = null;
+  };
 
+  const waitForRecordingEnd = (maxMs: number) =>
+    new Promise<void>((resolve) => {
+      recordingEndRef.current = resolve;
+      setTimeout(() => {
+        if (recordingEndRef.current === resolve) {
+          recordingEndRef.current = null;
+          resolve();
+        }
+      }, maxMs);
+    });
+
+  const handleVoicePress = () => {
+    if (disabled) return;
+    if (state === 'recording') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      finishRecordingWait();
+      return;
+    }
+    if (state !== 'idle') return;
+    void runRecordingSession();
+  };
+
+  const runRecordingSession = async () => {
     const granted = await requestAudioPermission();
     if (!granted) {
       Alert.alert('Нет доступа к микрофону');
@@ -97,7 +123,7 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
       await prepareAudioSession();
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record({ forDuration: 8 });
-      await new Promise((resolve) => setTimeout(resolve, 8200));
+      await waitForRecordingEnd(8200);
       if (audioRecorder.isRecording) {
         await audioRecorder.stop();
       }
@@ -119,6 +145,8 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
       setState('idle');
       pulse.value = 1;
       opacity.value = 1;
+    } finally {
+      finishRecordingWait();
     }
   };
 
@@ -131,11 +159,11 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
   return (
     <>
       {renderTrigger ? (
-        renderTrigger(startRecording, state, triggerAnimatedStyle)
+        renderTrigger(handleVoicePress, state, triggerAnimatedStyle)
       ) : (
         <Pressable
-          onPress={startRecording}
-          disabled={disabled || state !== 'idle'}
+          onPress={handleVoicePress}
+          disabled={disabled || state === 'transcribing' || state === 'confirming'}
           className={`w-[44px] h-[44px] rounded-full border items-center justify-center ${
             state !== 'idle' ? 'border-gold bg-gold/10' : 'border-border bg-surface'
           }`}
