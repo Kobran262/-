@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import Svg, { Path } from 'react-native-svg';
 
 function TabIcon({ name, color }: { name: React.ComponentProps<typeof FontAwesome>['name']; color: string }) {
   return <FontAwesome size={22} name={name} color={color} />;
@@ -43,6 +44,22 @@ export default function TabLayout() {
         options={{
           title: 'Товары',
           tabBarIcon: ({ color }) => <TabIcon name="cube" color={String(color)} />,
+        }}
+      />
+      <Tabs.Screen
+        name="stock"
+        options={{
+          title: 'Остатки',
+          tabBarIcon: ({ color }) => (
+            <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z"
+                stroke={String(color)}
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </Svg>
+          ),
         }}
       />
       <Tabs.Screen

@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable, Alert } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, ScrollView, RefreshControl, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
@@ -17,6 +17,7 @@ import { ACT_TYPE_ICONS, ACT_TYPE_ICON_BG, getActMeta } from '@/src/utils/actDis
 import { WAREHOUSES } from '@/src/types';
 import type { ActStatus } from '@/src/types';
 import type { VoiceCommand } from '@/src/services/voice/parser';
+import { isWhisperModelAvailable, subscribeModelProgress } from '@/src/services/voice/model';
 
 const WH_SHORT = [
   { id: 'WH-01', label: 'Приём' },
@@ -32,6 +33,17 @@ export default function DashboardScreen() {
   const [stats, setStats] = useState({ open: 0, drafts: 0, today: 0, closedToday: 0 });
   const [recent, setRecent] = useState<Awaited<ReturnType<typeof getRecentActsWithDetails>>>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
+  const [modelProgress, setModelProgress] = useState(0);
+
+  useEffect(() => {
+    isWhisperModelAvailable().then(setModelReady);
+    const unsub = subscribeModelProgress(({ percent }) => {
+      setModelProgress(percent);
+      if (percent >= 100) setModelReady(true);
+    });
+    return unsub;
+  }, []);
 
   const load = useCallback(async () => {
     setStats(await getActStats());
@@ -177,9 +189,11 @@ export default function DashboardScreen() {
 
             <VoiceInput
               onCommand={handleVoiceCommand}
+              disabled={!modelReady}
               renderTrigger={(onPress, voiceState, animatedStyle) => (
                 <Pressable
-                  onPress={onPress}
+                  onPress={modelReady ? onPress : undefined}
+                  disabled={!modelReady && voiceState === 'idle'}
                   className={`flex-1 rounded-xl py-3 items-center gap-1.5 ${
                     voiceState !== 'idle' ? 'border border-gold/60' : 'border border-gold/30'
                   }`}
@@ -192,8 +206,10 @@ export default function DashboardScreen() {
                       animatedStyle,
                     ]}
                   >
-                    {voiceState === 'transcribing' ? (
-                      <Text className="text-gold text-xs">…</Text>
+                    {!modelReady ? (
+                      <ActivityIndicator size="small" color="#C8A96E66" />
+                    ) : voiceState === 'transcribing' ? (
+                      <ActivityIndicator size="small" color="#C8A96E" />
                     ) : (
                       <MicIcon
                         size={20}
@@ -201,12 +217,16 @@ export default function DashboardScreen() {
                       />
                     )}
                   </Animated.View>
-                  <Text className="text-[10px]" style={{ color: '#C8A96E' }}>
-                    {voiceState === 'recording'
-                      ? 'Стоп'
-                      : voiceState === 'transcribing'
-                        ? 'Обработка…'
-                        : 'Голос'}
+                  <Text className="text-[10px]" style={{ color: modelReady ? '#C8A96E' : '#C8A96E66' }}>
+                    {!modelReady
+                      ? modelProgress > 0
+                        ? `${modelProgress}%`
+                        : 'Загрузка…'
+                      : voiceState === 'recording'
+                        ? 'Слушаю…'
+                        : voiceState === 'transcribing'
+                          ? 'Отмена ✕'
+                          : 'Голос'}
                   </Text>
                 </Pressable>
               )}

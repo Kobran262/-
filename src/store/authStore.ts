@@ -4,7 +4,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/src/db/client';
 import { users } from '@/src/db/schema';
-import { verifyPin } from '@/src/utils/validation';
+import { hashPin, verifyPin } from '@/src/utils/validation';
 import type { User } from '@/src/types';
 
 const SESSION_KEY = 'srecha_session_user_id';
@@ -76,7 +76,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (rows.length === 0) return false;
     const user = rows[0];
-    if (!(await verifyPin(pin, user.pin_hash))) return false;
+    const { valid, needsRehash } = await verifyPin(pin, user.pin_hash);
+    if (!valid) return false;
+    if (needsRehash) {
+      const newHash = await hashPin(pin);
+      await db
+        .update(users)
+        .set({ pin_hash: newHash, updated_at: Date.now() })
+        .where(eq(users.id, userId));
+    }
     await SecureStore.setItemAsync(SESSION_KEY, userId);
     set({
       currentUser: {

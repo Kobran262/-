@@ -9,6 +9,7 @@ import { getWhisperModelPath } from './model';
 
 let whisperCtx: WhisperContext | null = null;
 let initPromise: Promise<WhisperContext> | null = null;
+let currentTranscribeStop: (() => void) | null = null;
 
 export async function initVoice(): Promise<WhisperContext> {
   if (whisperCtx) return whisperCtx;
@@ -43,6 +44,11 @@ export interface TranscribeResult {
   durationMs: number;
 }
 
+export function abortTranscription(): void {
+  currentTranscribeStop?.();
+  currentTranscribeStop = null;
+}
+
 export async function transcribeRecording(
   uri: string,
   onTranscribeStart?: () => void
@@ -52,20 +58,41 @@ export async function transcribeRecording(
   onTranscribeStart?.();
 
   const start = Date.now();
-  const { promise } = ctx.transcribe(uri, {
+  const TIMEOUT_MS = 30_000;
+
+  const { promise, stop } = ctx.transcribe(uri, {
     language: 'ru',
     translate: false,
-    maxThreads: 4,
+    maxThreads: 2,
   });
-  const { result } = await promise;
-  const durationMs = Date.now() - start;
 
-  await FileSystem.deleteAsync(uri, { idempotent: true });
+  currentTranscribeStop = stop;
 
-  return { text: result.trim(), durationMs };
+  const timeoutId = setTimeout(() => {
+    stop();
+  }, TIMEOUT_MS);
+
+  try {
+    const { result } = await promise;
+    clearTimeout(timeoutId);
+    currentTranscribeStop = null;
+    const durationMs = Date.now() - start;
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+    return { text: result.trim(), durationMs };
+  } catch (e) {
+    clearTimeout(timeoutId);
+    currentTranscribeStop = null;
+    await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+    const msg = String(e);
+    if (msg.includes('aborted') || msg.includes('stopped') || msg.includes('cancelled')) {
+      throw new Error('Транскрипция прервана — попробуйте ещё раз с более чётким произношением');
+    }
+    throw new Error(`Ошибка транскрипции: ${msg}`);
+  }
 }
 
 export async function releaseVoice(): Promise<void> {
+  abortTranscription();
   if (whisperCtx) {
     await whisperCtx.release();
     whisperCtx = null;

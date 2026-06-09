@@ -69,8 +69,16 @@ export async function hashPin(pin: string): Promise<string> {
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin + PIN_SALT);
 }
 
-export async function verifyPin(pin: string, hash: string): Promise<boolean> {
-  const computed = await hashPin(pin);
-  if (computed === hash) return true;
-  return legacyHashPin(pin) === hash;
+export async function verifyPin(
+  pin: string,
+  storedHash: string
+): Promise<{ valid: boolean; needsRehash: boolean }> {
+  const sha256 = await hashPin(pin);
+  if (sha256 === storedHash) {
+    return { valid: true, needsRehash: false };
+  }
+  if (legacyHashPin(pin) === storedHash) {
+    return { valid: true, needsRehash: true };
+  }
+  return { valid: false, needsRehash: false };
 }

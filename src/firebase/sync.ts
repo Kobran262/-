@@ -1,7 +1,7 @@
-import { collection, getDocs, doc, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, Timestamp, query, where } from 'firebase/firestore';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/src/db/client';
-import { acts, products, movements } from '@/src/db/schema';
+import { acts, act_lines, products, movements } from '@/src/db/schema';
 import { getFirestoreDb, COMPANY_ID, isFirebaseConfigured } from './config';
 import { getFullDeviceId } from '@/src/utils/deviceId';
 
@@ -16,6 +16,27 @@ function toMillis(ts: unknown): number {
   if (ts instanceof Timestamp) return ts.toMillis();
   if (typeof ts === 'number') return ts;
   return 0;
+}
+
+function mapRemoteActLine(remote: Record<string, unknown>, remoteTs: number) {
+  return {
+    id: remote.id as string,
+    act_id: remote.act_id as string,
+    line_number: remote.line_number as number,
+    sku: remote.sku as string,
+    product_name: remote.product_name as string,
+    category: remote.category as string | undefined,
+    unit: remote.unit as string,
+    qty_planned: remote.qty_planned as number | undefined,
+    qty_actual: remote.qty_actual as number | undefined,
+    qty_diff: remote.qty_diff as number | undefined,
+    price_unit: remote.price_unit as number | undefined,
+    amount: remote.amount as number | undefined,
+    condition: remote.condition as string | undefined,
+    norm_per_unit: remote.norm_per_unit as number | undefined,
+    notes: remote.notes as string | undefined,
+    updated_at: remoteTs,
+  };
 }
 
 export async function syncOnStartup(userId: string): Promise<SyncResult> {
@@ -45,6 +66,26 @@ export async function syncOnStartup(userId: string): Promise<SyncResult> {
       );
       await localDb.update(acts).set({ sync_pending: false }).where(eq(acts.id, act.id));
       result.pushed += 1;
+    }
+
+    const pendingActIds = pendingActs.filter((a) => a.status !== 'draft').map((a) => a.id);
+    if (pendingActIds.length > 0) {
+      for (const actId of pendingActIds) {
+        const lines = await localDb.select().from(act_lines).where(eq(act_lines.act_id, actId));
+        for (const line of lines) {
+          const ref = doc(firestore, `companies/${COMPANY_ID}/act_lines/${line.id}`);
+          await setDoc(
+            ref,
+            {
+              ...line,
+              company_id: COMPANY_ID,
+              act_id: actId,
+              updated_at: Timestamp.fromMillis(line.updated_at),
+            },
+            { merge: true }
+          );
+        }
+      }
     }
 
     const pendingProducts = await localDb
@@ -80,6 +121,7 @@ export async function syncOnStartup(userId: string): Promise<SyncResult> {
     }
 
     try {
+      const pulledActIds: string[] = [];
       const actsSnap = await getDocs(collection(firestore, `companies/${COMPANY_ID}/acts`));
       for (const docSnap of actsSnap.docs) {
         const remote = docSnap.data();
@@ -117,6 +159,7 @@ export async function syncOnStartup(userId: string): Promise<SyncResult> {
             device_id: (remote.device_id as string) ?? deviceId,
             sync_pending: false,
           });
+          pulledActIds.push(actId);
           result.pulled += 1;
         } else if (remoteUpdatedAt > localRows[0].updated_at && localRows[0].status !== 'draft') {
           await localDb
@@ -148,6 +191,40 @@ export async function syncOnStartup(userId: string): Promise<SyncResult> {
             })
             .where(eq(acts.id, actId));
           result.pulled += 1;
+        }
+      }
+
+      if (pulledActIds.length > 0) {
+        for (let i = 0; i < pulledActIds.length; i += 30) {
+          const chunk = pulledActIds.slice(i, i + 30);
+          const linesSnap = await getDocs(
+            query(
+              collection(firestore, `companies/${COMPANY_ID}/act_lines`),
+              where('act_id', 'in', chunk)
+            )
+          );
+
+          for (const lineDoc of linesSnap.docs) {
+            const remote = lineDoc.data();
+            const lineId = (remote.id as string) ?? lineDoc.id;
+            const remoteTs = toMillis(remote.updated_at);
+            const existing = await localDb
+              .select()
+              .from(act_lines)
+              .where(eq(act_lines.id, lineId))
+              .limit(1);
+
+            if (existing.length === 0) {
+              await localDb.insert(act_lines).values(mapRemoteActLine({ ...remote, id: lineId }, remoteTs));
+              result.pulled += 1;
+            } else if (remoteTs > existing[0].updated_at) {
+              await localDb
+                .update(act_lines)
+                .set(mapRemoteActLine({ ...remote, id: lineId }, remoteTs))
+                .where(eq(act_lines.id, lineId));
+              result.pulled += 1;
+            }
+          }
         }
       }
 

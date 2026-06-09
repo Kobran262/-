@@ -1,5 +1,5 @@
 import { useState, useRef, type ReactNode } from 'react';
-import { View, Text, Pressable, Modal, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, Pressable, Modal, Alert, TextInput } from 'react-native';
 import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Rect, Path, Line } from 'react-native-svg';
 import {
+  abortTranscription,
   prepareAudioSession,
   requestAudioPermission,
   transcribeRecording,
@@ -104,6 +105,13 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
       finishRecordingWait();
       return;
     }
+    if (state === 'transcribing') {
+      abortTranscription();
+      setState('idle');
+      pulse.value = 1;
+      opacity.value = 1;
+      return;
+    }
     if (state !== 'idle') return;
     void runRecordingSession();
   };
@@ -141,7 +149,10 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
       setCommand(cmd);
       setState('confirming');
     } catch (e) {
-      Alert.alert('Ошибка записи', e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('прервана')) {
+        Alert.alert('Ошибка', msg);
+      }
       setState('idle');
       pulse.value = 1;
       opacity.value = 1;
@@ -163,13 +174,20 @@ export function VoiceInput({ onCommand, disabled, renderTrigger }: VoiceInputPro
       ) : (
         <Pressable
           onPress={handleVoicePress}
-          disabled={disabled || state === 'transcribing' || state === 'confirming'}
+          disabled={disabled || state === 'confirming'}
           className={`w-[44px] h-[44px] rounded-full border items-center justify-center ${
             state !== 'idle' ? 'border-gold bg-gold/10' : 'border-border bg-surface'
           }`}
         >
           {state === 'transcribing' ? (
-            <ActivityIndicator size="small" color="#C8A96E" />
+            <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M18 6L6 18M6 6l12 12"
+                stroke="#C8A96E"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </Svg>
           ) : state === 'recording' ? (
             <Animated.View style={pulseStyle}>
               <Text className="text-danger">⏺</Text>

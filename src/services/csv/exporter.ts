@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Papa from 'papaparse';
 import { format } from 'date-fns';
-import { getProducts, getMovements, getActs, getActLines } from '@/src/db/queries';
+import { getProducts, getMovements, getActs, getActLines, calcAccountingStock } from '@/src/db/queries';
 
 export async function exportProductsCsv(): Promise<string> {
   const products = await getProducts();
@@ -79,6 +79,23 @@ export async function exportActsCsv(from?: number, to?: number): Promise<string>
 
   const csv = Papa.unparse(rows);
   const filename = `acts_${format(new Date(), 'yyyy-MM')}.csv`;
+  const path = `${FileSystem.documentDirectory ?? ''}${filename}`;
+  await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+  return path;
+}
+
+export async function exportStockCsv(): Promise<string> {
+  const stock = await calcAccountingStock();
+  const rows = stock.map((s) => ({
+    warehouse: s.warehouse,
+    sku: s.sku,
+    product_name: s.product_name,
+    unit: s.unit,
+    qty: s.qty,
+  }));
+
+  const csv = Papa.unparse(rows);
+  const filename = `stock_${format(new Date(), 'yyyy-MM-dd')}.csv`;
   const path = `${FileSystem.documentDirectory ?? ''}${filename}`;
   await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
   return path;

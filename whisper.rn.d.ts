@@ -11,7 +11,7 @@ declare module 'whisper.rn' {
       filePathOrBase64: string,
       options?: { language?: string; translate?: boolean; maxThreads?: number }
     ): {
-      stop: () => Promise<void>;
+      stop: () => void;
       promise: Promise<TranscribeResult>;
     };
     release(): Promise<void>;
