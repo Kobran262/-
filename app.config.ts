@@ -22,7 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   assetBundlePatterns: ['assets/**/*'],
   ios: {
     bundleIdentifier: 'com.srecha.wms',
-    buildNumber: '11',
+    buildNumber: '12',
     appleTeamId: '54VMCQN8D8',
     supportsTablet: false,
     entitlements: {

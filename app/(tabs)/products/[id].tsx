@@ -9,28 +9,20 @@ import {
   Modal,
   StyleSheet,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Sharing from 'expo-sharing';
 import { getProductBySku, createProduct, updateProduct } from '@/src/db/queries';
+import { generateBarcodePng, generateEan13 } from '@/src/services/barcode/generator';
 import { ALL_CATEGORIES, ALL_CHANNELS } from '@/src/utils/productContext';
 import { WAREHOUSES, type WarehouseId } from '@/src/types';
 import { BackArrow } from '@/src/components/ui/BackArrow';
 
 type Mode = 'view' | 'edit' | 'new';
-
-function generateEan13(): string {
-  const prefix = '860';
-  const rand = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
-  const base = prefix + rand;
-  let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    sum += parseInt(base[i], 10) * (i % 2 === 0 ? 1 : 3);
-  }
-  const check = (10 - (sum % 10)) % 10;
-  return base + check;
-}
 
 export default function ProductDetailScreen() {
   const { id, mode: modeParam } = useLocalSearchParams<{ id: string; mode?: string }>();
@@ -56,6 +48,7 @@ export default function ProductDetailScreen() {
     discount_pct: '0',
     warehouse: 'WH-01' as WarehouseId,
     barcode: '',
+    barcode_image_path: '',
     notes: '',
     is_active: true,
     is_material: false,
@@ -82,6 +75,7 @@ export default function ProductDetailScreen() {
       discount_pct: product.discount_pct != null ? String(product.discount_pct) : '0',
       warehouse: product.warehouse as WarehouseId,
       barcode: product.barcode ?? '',
+      barcode_image_path: product.barcode_image_path ?? '',
       notes: product.notes ?? '',
       is_active: product.is_active ?? true,
       is_material: product.is_material ?? false,
@@ -148,11 +142,30 @@ export default function ProductDetailScreen() {
         notes: form.notes.trim() || null,
       };
 
+      const sku = form.id.trim();
+
       if (mode === 'new') {
-        await createProduct({ id: form.id.trim(), ...payload });
+        await createProduct({ id: sku, ...payload });
       } else {
-        await updateProduct(form.id, payload);
+        await updateProduct(sku, payload);
       }
+
+      if (form.barcode.trim()) {
+        try {
+          let imagePath = form.barcode_image_path;
+          if (!imagePath) {
+            imagePath = await generateBarcodePng(
+              form.barcode.trim(),
+              sku,
+              /^\d{13}$/.test(form.barcode.trim()) ? 'EAN13' : 'CODE128'
+            );
+            await updateProduct(sku, { barcode_image_path: imagePath });
+          }
+        } catch (imgErr) {
+          console.warn('Barcode image generation failed:', imgErr);
+        }
+      }
+
       Alert.alert('Готово', 'Сохранено');
       router.back();
     } catch (e) {
@@ -171,7 +184,11 @@ export default function ProductDetailScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
       <View className="px-5 pt-2 pb-3 flex-row items-center gap-3">
         <Pressable
           onPress={() => router.back()}
@@ -199,7 +216,11 @@ export default function ProductDetailScreen() {
         )}
       </View>
 
-      <ScrollView className="flex-1 px-5">
+      <ScrollView
+        className="flex-1 px-5"
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
         <Field label="SKU (id)" readonly={mode !== 'new'}>
           <TextInput
             className="text-foreground font-mono text-sm"
@@ -356,38 +377,79 @@ export default function ProductDetailScreen() {
           ))}
         </View>
 
-        <View className="flex-row gap-2 items-end mb-2">
-          <View className="flex-1">
-            <Field label="Штрихкод">
-              <View className="flex-row items-center gap-2">
-                <TextInput
-                  className="flex-1 text-foreground text-sm"
-                  style={{ minHeight: 44, textAlignVertical: 'center' }}
-                  value={form.barcode}
-                  editable={!readonly}
-                  onChangeText={(v) => updateField('barcode', v)}
-                  placeholderTextColor="#444"
-                />
-                {!readonly && (
-                  <Pressable
-                    onPress={openScanner}
-                    className="bg-gold/10 border border-gold/25 rounded px-2 py-2"
-                  >
-                    <Text className="text-gold text-xs">Сканировать</Text>
-                  </Pressable>
-                )}
-              </View>
-            </Field>
-          </View>
-          {(mode === 'new' || mode === 'edit') && (
-            <Pressable
-              onPress={() => updateField('barcode', generateEan13())}
-              className="bg-surface border border-border rounded-lg px-3 py-2.5 mb-2"
+        <View className="mb-2">
+          <Text className="text-[10px] text-[#555] uppercase tracking-wide mb-1 ml-0.5">
+            Штрихкод
+          </Text>
+
+          {form.barcode_image_path ? (
+            <View className="bg-white rounded-xl p-3 mb-2 items-center border border-border">
+              <Text className="text-black font-mono text-xs tracking-[3px]">{form.barcode}</Text>
+              <Text className="text-[#888] text-[9px] mt-1">
+                {/^\d{13}$/.test(form.barcode) ? 'EAN-13' : 'CODE128'} · файл сохранён
+              </Text>
+            </View>
+          ) : null}
+
+          <View className="flex-row gap-2">
+            <View
+              className="flex-1 bg-surface border border-border rounded-xl px-3.5"
+              style={{ minHeight: 44, justifyContent: 'center' }}
             >
-              <Text className="text-gold text-xs">EAN-13</Text>
-            </Pressable>
-          )}
+              <TextInput
+                className="text-foreground text-sm"
+                value={form.barcode}
+                editable={!readonly}
+                onChangeText={(v) => {
+                  setForm((f) => ({
+                    ...f,
+                    barcode: v,
+                    barcode_image_path: f.barcode_image_path ? '' : f.barcode_image_path,
+                  }));
+                }}
+                placeholderTextColor="#444"
+                keyboardType="numeric"
+              />
+            </View>
+
+            {!readonly && (
+              <View className="flex-col gap-1">
+                <Pressable
+                  onPress={openScanner}
+                  className="bg-surface border border-border rounded-lg px-2.5 py-2 items-center"
+                >
+                  <Text className="text-[#888] text-[10px]">Скан</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setForm((f) => ({
+                      ...f,
+                      barcode: generateEan13(),
+                      barcode_image_path: '',
+                    }));
+                  }}
+                  className="bg-gold/10 border border-gold/25 rounded-lg px-2.5 py-2 items-center"
+                >
+                  <Text className="text-gold text-[10px]">EAN</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
         </View>
+
+        {readonly && form.barcode_image_path ? (
+          <Pressable
+            onPress={async () => {
+              await Sharing.shareAsync(form.barcode_image_path, {
+                UTI: 'public.svg-image',
+                mimeType: 'image/svg+xml',
+              });
+            }}
+            className="bg-surface border border-border rounded-xl py-3 items-center mb-3"
+          >
+            <Text className="text-[#888] text-sm">Поделиться штрихкодом (SVG)</Text>
+          </Pressable>
+        ) : null}
 
         <Field label="Примечание">
           <TextInput
@@ -423,6 +485,7 @@ export default function ProductDetailScreen() {
           </Pressable>
         </View>
       )}
+      </KeyboardAvoidingView>
 
       <Modal visible={showScanner} animationType="slide">
         <SafeAreaView className="flex-1 bg-background">
@@ -446,6 +509,7 @@ export default function ProductDetailScreen() {
                     : ({ data }) => {
                         setScanned(true);
                         updateField('barcode', data);
+                        updateField('barcode_image_path', '');
                         setShowScanner(false);
                       }
                 }

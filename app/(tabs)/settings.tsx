@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/src/store/authStore';
@@ -133,8 +133,16 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <ScrollView className="flex-1 px-4 pt-4">
+    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
+      <ScrollView
+        className="flex-1 px-4 pt-4"
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
         <Text className="text-foreground text-2xl font-bold mb-6">Настройки</Text>
 
         <Text className="text-gold text-sm mb-2 uppercase tracking-wider">Профиль</Text>
@@ -238,6 +246,7 @@ export default function SettingsScreen() {
           <Text className="text-foreground/40 text-sm">DOO «Srecha» · Сербия</Text>
         </Card>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

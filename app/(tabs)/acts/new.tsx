@@ -1,5 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Alert, Pressable, TextInput, type KeyboardTypeOptions } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  Alert,
+  Pressable,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  type KeyboardTypeOptions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { createAct, addActLine, getProductBySku, getActLines } from '@/src/db/queries';
@@ -188,7 +198,11 @@ export default function NewActScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
       {/* Topbar — ref: srecha_wms_new_act.html */}
       <View className="px-5 pt-2 pb-3 flex-row items-center gap-3">
         <Pressable
@@ -211,7 +225,11 @@ export default function NewActScreen() {
         </View>
       )}
 
-      <ScrollView className="flex-1 bg-content px-5">
+      <ScrollView
+        className="flex-1 bg-content px-5"
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
         {step === 1 && (
           <>
             {prefill_sku && !prefill_act_id && (
@@ -362,7 +380,6 @@ export default function NewActScreen() {
             <FieldBox label="Примечание" value={form.notes} onChange={(v) => updateForm('notes', v)} multiline />
           </>
         )}
-        <View className="h-24" />
       </ScrollView>
 
       {/* Bottom actions */}
@@ -401,6 +418,7 @@ export default function NewActScreen() {
           </>
         )}
       </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -155,6 +155,7 @@ export async function runMigrations(): Promise<void> {
     'ALTER TABLE inventory_acts ADD COLUMN pdf_path TEXT',
     'ALTER TABLE inventory_acts ADD COLUMN gdrive_id TEXT',
     'ALTER TABLE users ADD COLUMN full_name TEXT',
+    'ALTER TABLE products ADD COLUMN barcode_image_path TEXT',
   ];
 
   for (const statement of alterStatements) {

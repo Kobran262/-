@@ -107,3 +107,142 @@ export async function shareBarcodeFile(path: string): Promise<void> {
     UTI: path.endsWith('.pdf') ? 'com.adobe.pdf' : 'public.comma-separated-values-text',
   });
 }
+
+export function generateEan13(): string {
+  const prefix = '860';
+  const rand = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
+  const base = prefix + rand;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(base[i], 10) * (i % 2 === 0 ? 1 : 3);
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return base + check;
+}
+
+function skuFilename(sku: string): string {
+  return sku.replace(/[^a-z0-9]/gi, '_');
+}
+
+function buildTextFallbackSvg(barcode: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80" viewBox="0 0 200 80">
+  <rect width="200" height="80" fill="white"/>
+  <text x="100" y="45" font-family="monospace" font-size="14" text-anchor="middle" fill="black">${barcode}</text>
+  <text x="100" y="65" font-family="sans-serif" font-size="8" text-anchor="middle" fill="#666">CODE128</text>
+</svg>`;
+}
+
+function buildEan13Svg(ean: string): string {
+  const L_CODES: Record<string, string> = {
+    '0': '0001101',
+    '1': '0011001',
+    '2': '0010011',
+    '3': '0111101',
+    '4': '0100011',
+    '5': '0110001',
+    '6': '0101111',
+    '7': '0111011',
+    '8': '0110111',
+    '9': '0001011',
+  };
+  const G_CODES: Record<string, string> = {
+    '0': '0100111',
+    '1': '0110011',
+    '2': '0011011',
+    '3': '0100001',
+    '4': '0011101',
+    '5': '0111001',
+    '6': '0000101',
+    '7': '0010001',
+    '8': '0001001',
+    '9': '0010111',
+  };
+  const R_CODES: Record<string, string> = {
+    '0': '1110010',
+    '1': '1100110',
+    '2': '1101100',
+    '3': '1000010',
+    '4': '1011100',
+    '5': '1001110',
+    '6': '1010000',
+    '7': '1000100',
+    '8': '1001000',
+    '9': '1110100',
+  };
+  const FIRST_DIGIT_STRUCTURE: Record<string, string> = {
+    '0': 'LLLLLL',
+    '1': 'LLGLGG',
+    '2': 'LLGGLG',
+    '3': 'LLGGGL',
+    '4': 'LGLLGG',
+    '5': 'LGGLLG',
+    '6': 'LGGGLL',
+    '7': 'LGLGLG',
+    '8': 'LGLGGL',
+    '9': 'LGGLGL',
+  };
+
+  const firstDigit = ean[0];
+  const structure = FIRST_DIGIT_STRUCTURE[firstDigit] ?? 'LLLLLL';
+
+  let bits = '101';
+  for (let i = 0; i < 6; i++) {
+    const d = ean[i + 1];
+    bits += structure[i] === 'G' ? G_CODES[d] : L_CODES[d];
+  }
+  bits += '01010';
+  for (let i = 7; i <= 12; i++) {
+    bits += R_CODES[ean[i]];
+  }
+  bits += '101';
+
+  const W = 200;
+  const H = 80;
+  const barWidth = (W - 20) / bits.length;
+  const barHeight = H - 20;
+  const textY = H - 4;
+
+  let rects = '';
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i] === '1') {
+      rects += `<rect x="${(10 + i * barWidth).toFixed(2)}" y="5" width="${barWidth.toFixed(2)}" height="${barHeight}" fill="black"/>`;
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <rect width="${W}" height="${H}" fill="white"/>
+  ${rects}
+  <text x="${W / 2}" y="${textY}" font-family="monospace" font-size="9" text-anchor="middle" fill="black">${ean}</text>
+</svg>`;
+}
+
+function buildSvgBarcode(barcode: string, format: BarcodeFormat): string {
+  if (format === 'EAN13' && /^\d{13}$/.test(barcode)) {
+    return buildEan13Svg(barcode);
+  }
+  return buildTextFallbackSvg(barcode);
+}
+
+export async function generateBarcodePng(
+  barcode: string,
+  sku: string,
+  format: BarcodeFormat = 'EAN13'
+): Promise<string> {
+  const dir = `${FileSystem.documentDirectory ?? ''}barcodes/`;
+  await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+
+  const filename = `${skuFilename(sku)}.svg`;
+  const outPath = `${dir}${filename}`;
+
+  const cached = await FileSystem.getInfoAsync(outPath);
+  if (cached.exists) {
+    return outPath;
+  }
+
+  const svgContent = buildSvgBarcode(barcode, format);
+  await FileSystem.writeAsStringAsync(outPath, svgContent, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+
+  return outPath;
+}

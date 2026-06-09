@@ -4,7 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { getProductsCatalog, toggleProductActive } from '@/src/db/queries';
+import { getProductsCatalog, toggleProductActive, bindBarcode, updateProduct } from '@/src/db/queries';
+import { generateBarcodePng, generateEan13 } from '@/src/services/barcode/generator';
 import { ALL_CATEGORIES, ALL_CHANNELS } from '@/src/utils/productContext';
 import { WAREHOUSES, type WarehouseId } from '@/src/types';
 
@@ -260,6 +261,21 @@ export default function ProductsCatalogScreen() {
                   <Text className="text-[#555] text-[11px]">
                     {p.channel} · {p.packaging}
                   </Text>
+                  {!p.barcode && (
+                    <Pressable
+                      onPress={async () => {
+                        const code = generateEan13();
+                        await bindBarcode(p.id, code);
+                        await generateBarcodePng(code, p.id, 'EAN13')
+                          .then((path) => updateProduct(p.id, { barcode_image_path: path }))
+                          .catch(() => {});
+                        load();
+                      }}
+                      className="mt-1 self-start bg-gold/10 border border-gold/25 rounded px-2 py-0.5"
+                    >
+                      <Text className="text-gold text-[9px]">+ EAN-13</Text>
+                    </Pressable>
+                  )}
                 </View>
                 <Text className="text-foreground text-xs self-center">
                   {p.price_opt != null ? `${p.price_opt.toFixed(0)} din` : '—'}

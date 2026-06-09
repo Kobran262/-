@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useAuthStore } from '@/src/store/authStore';
@@ -53,6 +53,10 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
       <View className="flex-1 px-6 justify-center">
         <Text className="text-gold text-3xl font-bold text-center mb-1">Srecha WMS</Text>
         <Text className="text-foreground/60 text-center mb-8">Складской учёт DOO «Srecha»</Text>
@@ -110,6 +114,7 @@ export default function LoginScreen() {
         )}
       </View>
       <Text className="text-foreground/30 text-center pb-4 text-xs">PIN по умолчанию: 1234</Text>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

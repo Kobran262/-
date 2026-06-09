@@ -8,6 +8,8 @@ import {
   Alert,
   Modal,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
@@ -267,7 +269,11 @@ export default function InventoryDetailScreen() {
   const isDraft = act.status === 'draft';
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
       <View className="px-5 pt-2 pb-3 flex-row items-center gap-3">
         <Pressable
           onPress={() => router.back()}
@@ -317,7 +323,11 @@ export default function InventoryDetailScreen() {
         />
       </View>
 
-      <ScrollView className="flex-1 px-5">
+      <ScrollView
+        className="flex-1 px-5"
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
         {WAREHOUSE_ORDER.map((wh) => {
           const whAllLines = lines.filter((l) => l.warehouse === wh);
           const whFilledLines = whAllLines.filter(isFilled);
@@ -419,7 +429,6 @@ export default function InventoryDetailScreen() {
             </View>
           );
         })}
-        <View className="h-24" />
       </ScrollView>
 
       {isDraft && (
@@ -466,6 +475,7 @@ export default function InventoryDetailScreen() {
           </View>
         </View>
       )}
+      </KeyboardAvoidingView>
 
       <Modal visible={showAddModal} animationType="slide" transparent>
         <View className="flex-1 justify-end bg-black/60">

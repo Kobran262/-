@@ -26,6 +26,7 @@ export const products = sqliteTable('products', {
   discount_pct: real('discount_pct'),
   warehouse: text('warehouse').notNull(),
   barcode: text('barcode'),
+  barcode_image_path: text('barcode_image_path'),
   is_material: integer('is_material', { mode: 'boolean' }).default(false),
   is_active: integer('is_active', { mode: 'boolean' }).default(true),
   notes: text('notes'),

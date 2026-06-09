@@ -1,5 +1,14 @@
 import { useCallback, useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, Pressable, TextInput } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  Alert,
+  Pressable,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -228,7 +237,11 @@ export default function ActDetailScreen() {
   const typeLabel = ACT_TYPE_LABELS[act.type as keyof typeof ACT_TYPE_LABELS]?.split('(')[0].trim();
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
       <View className="px-5 pt-2 pb-3 flex-row items-center gap-3">
         <Pressable
           onPress={() => router.back()}
@@ -249,7 +262,11 @@ export default function ActDetailScreen() {
         </View>
       )}
 
-      <ScrollView className="flex-1 bg-content px-5">
+      <ScrollView
+        className="flex-1 bg-content px-5"
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
         {act.warehouse_from && act.warehouse_to && (
           <View className="mb-3">
             <Text className="text-[11px] text-[#555] uppercase tracking-widest mb-2">Маршрут</Text>
@@ -512,7 +529,6 @@ export default function ActDetailScreen() {
             </Pressable>
           </View>
         )}
-        <View className="h-24" />
       </ScrollView>
 
       {isDraft && (
@@ -534,6 +550,7 @@ export default function ActDetailScreen() {
           </Pressable>
         </View>
       )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
