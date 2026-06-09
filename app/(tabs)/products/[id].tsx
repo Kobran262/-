@@ -16,6 +16,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { getProductBySku, createProduct, updateProduct } from '@/src/db/queries';
 import { ALL_CATEGORIES, ALL_CHANNELS } from '@/src/utils/productContext';
 import { WAREHOUSES, type WarehouseId } from '@/src/types';
+import { BackArrow } from '@/src/components/ui/BackArrow';
 
 type Mode = 'view' | 'edit' | 'new';
 
@@ -176,7 +177,7 @@ export default function ProductDetailScreen() {
           onPress={() => router.back()}
           className="w-[34px] h-[34px] rounded-[10px] bg-surface border border-border items-center justify-center"
         >
-          <Text className="text-[#888] text-lg">‹</Text>
+          <BackArrow />
         </Pressable>
         <View className="flex-1">
           <Text className="text-[17px] text-foreground font-medium">

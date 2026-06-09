@@ -43,6 +43,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           currentUser: {
             id: u.id,
             name: u.name,
+            full_name: u.full_name ?? undefined,
             role: u.role as User['role'],
             warehouse_default: u.warehouse_default as User['warehouse_default'],
             created_at: u.created_at,
@@ -61,6 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       allUsers: rows.map((u) => ({
         id: u.id,
         name: u.name,
+        full_name: u.full_name ?? undefined,
         role: u.role as User['role'],
         warehouse_default: u.warehouse_default as User['warehouse_default'],
         created_at: u.created_at,
@@ -80,6 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       currentUser: {
         id: user.id,
         name: user.name,
+        full_name: user.full_name ?? undefined,
         role: user.role as User['role'],
         warehouse_default: user.warehouse_default as User['warehouse_default'],
         created_at: user.created_at,
@@ -105,6 +108,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       currentUser: {
         id: user.id,
         name: user.name,
+        full_name: user.full_name ?? undefined,
         role: user.role as User['role'],
         warehouse_default: user.warehouse_default as User['warehouse_default'],
         created_at: user.created_at,

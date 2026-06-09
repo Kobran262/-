@@ -5,6 +5,14 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import type { Act, ActLine } from '@/src/types';
 import { ACT_TYPE_LABELS } from '@/src/types';
+import { getUserById } from '@/src/db/queries';
+
+export interface ActPdfData {
+  act: Act;
+  lines: ActLine[];
+  responsible_full_name: string;
+  checked_full_name: string;
+}
 
 const BASE_STYLES = `
   body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; color: #1a1a1a; }
@@ -37,7 +45,8 @@ function fmtMoney(n?: number | null): string {
   return n.toFixed(2);
 }
 
-function buildReceiptHtml(act: Act, lines: ActLine[]): string {
+function buildReceiptHtml(data: ActPdfData): string {
+  const { act, lines, responsible_full_name } = data;
   const totalPlan = lines.reduce((s, l) => s + (l.qty_planned ?? 0) * (l.price_unit ?? 0), 0);
   const totalActual = lines.reduce((s, l) => s + (l.qty_actual ?? 0) * (l.price_unit ?? 0), 0);
 
@@ -79,14 +88,15 @@ function buildReceiptHtml(act: Act, lines: ActLine[]): string {
       </tbody>
     </table>
     <div class="signatures">
-      <div class="sig-block">Товар принял:<div class="sig-line"></div></div>
+      <div class="sig-block">Товар принял: ${responsible_full_name}<div class="sig-line"></div></div>
       <div class="sig-block">Товар передал (поставщик):<div class="sig-line"></div></div>
     </div>
     <div class="footer">Srecha WMS · ${format(new Date(), 'dd.MM.yyyy HH:mm')}</div>
   </body></html>`;
 }
 
-function buildTransferHtml(act: Act, lines: ActLine[]): string {
+function buildTransferHtml(data: ActPdfData): string {
+  const { act, lines, responsible_full_name, checked_full_name } = data;
   const rows = lines
     .map(
       (l, i) => `
@@ -115,13 +125,14 @@ function buildTransferHtml(act: Act, lines: ActLine[]): string {
       <tbody>${rows}</tbody>
     </table>
     <div class="signatures">
-      <div class="sig-block">Передал:<div class="sig-line"></div></div>
-      <div class="sig-block">Принял:<div class="sig-line"></div></div>
+      <div class="sig-block">Передал: ${responsible_full_name}<div class="sig-line"></div></div>
+      <div class="sig-block">Принял: ${checked_full_name}<div class="sig-line"></div></div>
     </div>
   </body></html>`;
 }
 
-function buildShipmentHtml(act: Act, lines: ActLine[]): string {
+function buildShipmentHtml(data: ActPdfData): string {
+  const { act, lines, responsible_full_name, checked_full_name } = data;
   const total = lines.reduce((s, l) => s + (l.amount ?? 0), 0);
   const rows = lines
     .map(
@@ -154,13 +165,14 @@ function buildShipmentHtml(act: Act, lines: ActLine[]): string {
       </tbody>
     </table>
     <div class="signatures">
-      <div class="sig-block">Отгрузил:<div class="sig-line"></div></div>
-      <div class="sig-block">Принял:<div class="sig-line"></div></div>
+      <div class="sig-block">Отгрузил: ${responsible_full_name}<div class="sig-line"></div></div>
+      <div class="sig-block">Принял: ${checked_full_name}<div class="sig-line"></div></div>
     </div>
   </body></html>`;
 }
 
-function buildPackagingCardHtml(act: Act, lines: ActLine[]): string {
+function buildPackagingCardHtml(data: ActPdfData): string {
+  const { act, lines, responsible_full_name } = data;
   const rawLines = lines.filter((l) => l.unit === 'г' || l.unit === 'кг');
   const pkgLines = lines.filter(
     (l) => l.category === 'Упаковка' || l.sku.startsWith('PKG-')
@@ -221,7 +233,7 @@ function buildPackagingCardHtml(act: Act, lines: ActLine[]): string {
     <table class="meta-table">
       <tr><td class="meta-label">Номер карты:</td><td>${act.number}</td><td class="meta-label">Тип упаковки:</td><td>${act.packaging_type ?? '—'}</td></tr>
       <tr><td class="meta-label">Дата открытия:</td><td>${fmtDate(act.date)}</td><td class="meta-label">SKU готовой продукции:</td><td>${act.sku_finished ?? '—'}</td></tr>
-      <tr><td class="meta-label">Дата закрытия:</td><td>${act.date_closed ? fmtDate(act.date_closed) : '—'}</td><td class="meta-label">Ответственный:</td><td>${act.notes ?? '—'}</td></tr>
+      <tr><td class="meta-label">Дата закрытия:</td><td>${act.date_closed ? fmtDate(act.date_closed) : '—'}</td><td class="meta-label">Ответственный:</td><td>${responsible_full_name}</td></tr>
       <tr><td class="meta-label">Статус:</td><td colspan="3">${statusLabel}</td></tr>
     </table>
 
@@ -253,7 +265,7 @@ function buildPackagingCardHtml(act: Act, lines: ActLine[]): string {
     </table>
 
     <div class="signatures">
-      <div class="sig-block">Карту открыл:<div class="sig-line"></div></div>
+      <div class="sig-block">Карту открыл: ${responsible_full_name}<div class="sig-line"></div></div>
       <div class="sig-block">Карту закрыл:<div class="sig-line"></div></div>
       <div class="sig-block">Утвердил:<div class="sig-line"></div></div>
     </div>
@@ -261,7 +273,8 @@ function buildPackagingCardHtml(act: Act, lines: ActLine[]): string {
   </body></html>`;
 }
 
-function buildGenericHtml(act: Act, lines: ActLine[]): string {
+function buildGenericHtml(data: ActPdfData): string {
+  const { act, lines, responsible_full_name } = data;
   const rows = lines
     .map(
       (l, i) =>
@@ -272,7 +285,10 @@ function buildGenericHtml(act: Act, lines: ActLine[]): string {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${BASE_STYLES}</style></head><body>
     <div class="header"><div class="company">DOO «Srecha»</div></div>
     <div class="act-title">${ACT_TYPE_LABELS[act.type as keyof typeof ACT_TYPE_LABELS] ?? act.type} <span class="act-number">${act.number}</span></div>
-    <table class="meta-table"><tr><td class="meta-label">Дата:</td><td>${fmtDate(act.date)}</td></tr></table>
+    <table class="meta-table">
+      <tr><td class="meta-label">Дата:</td><td>${fmtDate(act.date)}</td></tr>
+      <tr><td class="meta-label">Ответственный:</td><td>${responsible_full_name}</td></tr>
+    </table>
     <table class="lines-table">
       <thead><tr><th>№</th><th>SKU</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th><th>Сумма</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -280,24 +296,36 @@ function buildGenericHtml(act: Act, lines: ActLine[]): string {
   </body></html>`;
 }
 
-export function buildActHtml(act: Act, lines: ActLine[]): string {
-  switch (act.type) {
+export function buildActHtml(data: ActPdfData): string {
+  switch (data.act.type) {
     case 'receipt':
-      return buildReceiptHtml(act, lines);
+      return buildReceiptHtml(data);
     case 'transfer':
-      return buildTransferHtml(act, lines);
+      return buildTransferHtml(data);
     case 'packaging_card':
-      return buildPackagingCardHtml(act, lines);
+      return buildPackagingCardHtml(data);
     case 'shipment_b2b':
     case 'shipment_ecom':
-      return buildShipmentHtml(act, lines);
+      return buildShipmentHtml(data);
     default:
-      return buildGenericHtml(act, lines);
+      return buildGenericHtml(data);
   }
 }
 
 export async function generateActPdf(act: Act, lines: ActLine[]): Promise<string> {
-  const html = buildActHtml(act, lines);
+  const [responsibleUser, checkedUser] = await Promise.all([
+    act.responsible_user ? getUserById(act.responsible_user) : null,
+    act.checked_by ? getUserById(act.checked_by) : null,
+  ]);
+
+  const pdfData: ActPdfData = {
+    act,
+    lines,
+    responsible_full_name: responsibleUser?.full_name ?? responsibleUser?.name ?? '___',
+    checked_full_name: checkedUser?.full_name ?? checkedUser?.name ?? '___',
+  };
+
+  const html = buildActHtml(pdfData);
   const { uri } = await Print.printToFileAsync({ html, base64: false });
 
   const actsDir = `${FileSystem.documentDirectory ?? ''}acts/`;

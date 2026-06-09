@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { createAct, addActLine, getProductBySku, getActLines } from '@/src/db/queries';
 import { StepIndicator } from '@/src/components/ui/StepIndicator';
+import { BackArrow } from '@/src/components/ui/BackArrow';
 import { ACT_TYPE_LABELS, TRANSFER_ROUTES, WAREHOUSES } from '@/src/types';
 import type { ActType, WarehouseId } from '@/src/types';
 import { useAuthStore } from '@/src/store/authStore';
@@ -28,6 +29,7 @@ export default function NewActScreen() {
   const [loading, setLoading] = useState(false);
   const [previewNumber, setPreviewNumber] = useState('новый');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showTypeError, setShowTypeError] = useState(false);
   const prefillDone = useRef(false);
 
   useEffect(() => {
@@ -193,7 +195,7 @@ export default function NewActScreen() {
           onPress={() => (step > 1 ? setStep(step - 1) : router.back())}
           className="w-[34px] h-[34px] rounded-[10px] bg-surface border border-border items-center justify-center"
         >
-          <Text className="text-[#888] text-lg">‹</Text>
+          <BackArrow />
         </Pressable>
         <View>
           <Text className="text-[17px] text-foreground font-medium">Новый акт</Text>
@@ -227,7 +229,10 @@ export default function NewActScreen() {
                 return (
                   <Pressable
                     key={opt.type}
-                    onPress={() => setType(opt.type)}
+                    onPress={() => {
+                      setType(opt.type);
+                      setShowTypeError(false);
+                    }}
                     className={`w-[48%] bg-surface rounded-xl p-3 border flex-row gap-2.5 ${
                       selected ? 'border-gold bg-gold/5' : 'border-border'
                     }`}
@@ -248,6 +253,11 @@ export default function NewActScreen() {
                 );
               })}
             </View>
+            {showTypeError && (
+              <Text className="text-danger text-xs text-center mt-2">
+                Выберите тип документа
+              </Text>
+            )}
           </>
         )}
 
@@ -255,11 +265,22 @@ export default function NewActScreen() {
           <>
             {type === 'receipt' && (
               <View className="gap-2.5 mb-4">
-                <FieldBox label="Поставщик" value={form.supplier} onChange={(v) => updateForm('supplier', v)} />
+                <FieldBox
+                  label="Поставщик *"
+                  value={form.supplier}
+                  onChange={(v) => updateForm('supplier', v)}
+                />
                 {errors.supplier && (
-                  <Text className="text-danger text-xs ml-1 -mt-1 mb-1">{errors.supplier}</Text>
+                  <Text className="text-danger text-xs ml-1 -mt-1">{errors.supplier}</Text>
                 )}
-                <FieldBox label="Номер инвойса" value={form.invoice_number} onChange={(v) => updateForm('invoice_number', v)} />
+                <FieldBox
+                  label="Номер инвойса *"
+                  value={form.invoice_number}
+                  onChange={(v) => updateForm('invoice_number', v)}
+                />
+                {errors.invoice_number && (
+                  <Text className="text-danger text-xs ml-1 -mt-1">{errors.invoice_number}</Text>
+                )}
               </View>
             )}
 
@@ -315,7 +336,11 @@ export default function NewActScreen() {
                     </Text>
                   </Pressable>
                 ))}
-                <FieldBox label="SKU готовой продукции" value={form.sku_finished} onChange={(v) => updateForm('sku_finished', v)} />
+                <FieldBox
+                  label="SKU готовой продукции *"
+                  value={form.sku_finished}
+                  onChange={(v) => updateForm('sku_finished', v)}
+                />
                 {errors.sku_finished && (
                   <Text className="text-danger text-xs ml-1 -mt-1 mb-1">{errors.sku_finished}</Text>
                 )}
@@ -343,28 +368,26 @@ export default function NewActScreen() {
       {/* Bottom actions */}
       <View className="px-5 py-3 bg-background border-t border-[#1f1f1f] flex-row gap-2.5">
         {step === 1 ? (
-          <>
-            <Pressable
-              onPress={() => router.back()}
-              className="flex-1 bg-surface border border-border rounded-xl py-3.5 items-center"
-            >
-              <Text className="text-[#888] text-sm">Отмена</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => type && setStep(2)}
-              disabled={!type}
-              className={`flex-[2] rounded-xl py-3.5 items-center ${type ? 'bg-gold' : 'bg-gold/40'}`}
-            >
-              <Text className="text-background text-sm font-medium">Далее →</Text>
-            </Pressable>
-          </>
+          <Pressable
+            onPress={() => {
+              if (!type) {
+                setShowTypeError(true);
+                return;
+              }
+              setShowTypeError(false);
+              setStep(2);
+            }}
+            className="flex-1 bg-gold rounded-xl py-3.5 items-center"
+          >
+            <Text className="text-background text-sm font-medium">Далее →</Text>
+          </Pressable>
         ) : (
           <>
             <Pressable
               onPress={() => setStep(1)}
               className="flex-1 bg-surface border border-border rounded-xl py-3.5 items-center"
             >
-              <Text className="text-[#888] text-sm">Назад</Text>
+              <Text className="text-[#888] text-sm">← Назад</Text>
             </Pressable>
             <Pressable
               onPress={handleCreate}
@@ -372,7 +395,7 @@ export default function NewActScreen() {
               className="flex-[2] bg-gold rounded-xl py-3.5 items-center"
             >
               <Text className="text-background text-sm font-medium">
-                {loading ? 'Создание…' : 'Создать черновик →'}
+                {loading ? 'Создание…' : 'Создать черновик'}
               </Text>
             </Pressable>
           </>

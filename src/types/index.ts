@@ -1,10 +1,11 @@
-export type UserRole = 'admin' | 'warehouse' | 'manager';
+export type UserRole = 'admin' | 'cto' | 'manager' | 'warehouse';
 
 export type WarehouseId = 'WH-01' | 'WH-02' | 'WH-03' | 'WH-04';
 
 export interface User {
   id: string;
   name: string;
+  full_name?: string;
   role: UserRole;
   warehouse_default?: WarehouseId;
   created_at: number;

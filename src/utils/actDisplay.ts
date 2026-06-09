@@ -1,4 +1,11 @@
-import type { ActType, ActStatus } from '@/src/types';
+import type { ActType, ActStatus, UserRole } from '@/src/types';
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Администратор',
+  cto: 'CTO',
+  manager: 'Менеджер',
+  warehouse: 'Склад',
+};
 
 export const ACT_TYPE_ICONS: Record<string, string> = {
   receipt: '📥',

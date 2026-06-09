@@ -189,7 +189,7 @@ export default function InventoryScreen() {
                 className="text-sm text-foreground p-0"
                 value={commission}
                 onChangeText={setCommission}
-                placeholder="Иван И., Мария П."
+                placeholder="Иван И., Наталья К."
                 placeholderTextColor="#444"
               />
             </View>

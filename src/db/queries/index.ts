@@ -493,6 +493,12 @@ export async function getAllUsers() {
   return db.select().from(users).orderBy(users.name);
 }
 
+export async function getUserById(id: string) {
+  const db = getDb();
+  const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
 export async function updateActLine(
   lineId: string,
   updates: {

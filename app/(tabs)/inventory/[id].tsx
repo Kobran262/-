@@ -31,6 +31,7 @@ import {
 } from '@/src/services/pdf/generator';
 import { uploadInventoryPdfToDrive } from '@/src/services/gdrive/uploader';
 import { WAREHOUSES, type WarehouseId } from '@/src/types';
+import { BackArrow } from '@/src/components/ui/BackArrow';
 
 const WAREHOUSE_ORDER: WarehouseId[] = ['WH-01', 'WH-02', 'WH-03', 'WH-04'];
 
@@ -272,7 +273,7 @@ export default function InventoryDetailScreen() {
           onPress={() => router.back()}
           className="w-[34px] h-[34px] rounded-[10px] bg-surface border border-border items-center justify-center"
         >
-          <Text className="text-[#888] text-lg">‹</Text>
+          <BackArrow />
         </Pressable>
         <View className="flex-1">
           <Text className="text-[17px] text-foreground font-medium">{act.number}</Text>

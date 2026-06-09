@@ -13,6 +13,7 @@ import {
   type BarcodeFormat,
 } from '@/src/services/barcode/generator';
 import type { products } from '@/src/db/schema';
+import { BackArrow } from '@/src/components/ui/BackArrow';
 
 type Product = typeof products.$inferSelect;
 
@@ -142,7 +143,7 @@ export default function BarcodesScreen() {
           onPress={() => router.back()}
           className="w-[34px] h-[34px] rounded-[10px] bg-surface border border-border items-center justify-center"
         >
-          <Text className="text-[#888] text-lg">‹</Text>
+          <BackArrow />
         </Pressable>
         <Text className="text-[17px] text-foreground font-medium flex-1">Генератор штрихкодов</Text>
       </View>

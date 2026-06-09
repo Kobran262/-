@@ -5,6 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Svg, { Path } from 'react-native-svg';
+import Animated from 'react-native-reanimated';
 import { useAuthStore } from '@/src/store/authStore';
 import { useSyncStore } from '@/src/store/syncStore';
 import { getActStats, getRecentActsWithDetails, createAct, addActLine } from '@/src/db/queries';
@@ -176,22 +177,36 @@ export default function DashboardScreen() {
 
             <VoiceInput
               onCommand={handleVoiceCommand}
-              renderTrigger={(onPress, isActive) => (
+              renderTrigger={(onPress, voiceState, animatedStyle) => (
                 <Pressable
                   onPress={onPress}
                   className={`flex-1 rounded-xl py-3 items-center gap-1.5 ${
-                    isActive ? 'bg-gold/15 border border-gold/60' : 'bg-surface border border-gold/30'
+                    voiceState !== 'idle' ? 'border border-gold/60' : 'border border-gold/30'
                   }`}
-                  style={{ backgroundColor: isActive ? '#C8A96E22' : '#C8A96E08' }}
+                  style={{ backgroundColor: voiceState !== 'idle' ? '#C8A96E22' : '#C8A96E08' }}
                 >
-                  <View
+                  <Animated.View
                     className="w-[38px] h-[38px] rounded-[10px] items-center justify-center"
-                    style={{ backgroundColor: '#C8A96E18', borderWidth: 1, borderColor: '#C8A96E33' }}
+                    style={[
+                      { backgroundColor: '#C8A96E18', borderWidth: 1, borderColor: '#C8A96E33' },
+                      animatedStyle,
+                    ]}
                   >
-                    <MicIcon size={20} color={isActive ? '#C8A96E' : '#C8A96ECC'} />
-                  </View>
+                    {voiceState === 'transcribing' ? (
+                      <Text className="text-gold text-xs">…</Text>
+                    ) : (
+                      <MicIcon
+                        size={20}
+                        color={voiceState !== 'idle' ? '#C8A96E' : '#C8A96ECC'}
+                      />
+                    )}
+                  </Animated.View>
                   <Text className="text-[10px]" style={{ color: '#C8A96E' }}>
-                    {isActive ? 'Слушаю…' : 'Голос'}
+                    {voiceState === 'recording'
+                      ? 'Слушаю…'
+                      : voiceState === 'transcribing'
+                        ? 'Обработка…'
+                        : 'Голос'}
                   </Text>
                 </Pressable>
               )}

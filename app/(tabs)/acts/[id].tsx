@@ -19,6 +19,7 @@ import { uploadPdfToDrive } from '@/src/services/gdrive/uploader';
 import { isGoogleConnected } from '@/src/services/gdrive/auth';
 import { useSettingsStore } from '@/src/store/settingsStore';
 import { StepIndicator } from '@/src/components/ui/StepIndicator';
+import { BackArrow } from '@/src/components/ui/BackArrow';
 import { StatusBadge } from '@/src/components/ui/StatusBadge';
 import { ACT_TYPE_LABELS } from '@/src/types';
 import type { ActStatus, ActType, WarehouseId } from '@/src/types';
@@ -233,7 +234,7 @@ export default function ActDetailScreen() {
           onPress={() => router.back()}
           className="w-[34px] h-[34px] rounded-[10px] bg-surface border border-border items-center justify-center"
         >
-          <Text className="text-[#888] text-lg">‹</Text>
+          <BackArrow />
         </Pressable>
         <View className="flex-1">
           <Text className="text-[17px] text-foreground font-medium">{act.number}</Text>

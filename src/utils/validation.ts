@@ -4,7 +4,7 @@ import * as Crypto from 'expo-crypto';
 export const receiptActSchema = z.object({
   date: z.number(),
   supplier: z.string().min(1, 'Укажите поставщика'),
-  invoice_number: z.string().optional(),
+  invoice_number: z.string().min(1, 'Укажите номер инвойса'),
   responsible_user: z.string().min(1, 'Укажите ответственного'),
   checked_by: z.string().optional(),
   notes: z.string().optional(),
@@ -29,7 +29,7 @@ export const packagingActSchema = z.object({
 
 export const shipmentActSchema = z.object({
   date: z.number(),
-  channel: z.string().min(1),
+  channel: z.string().min(1, 'Укажите канал продаж'),
   client_name: z.string().min(1, 'Укажите клиента'),
   client_contact: z.string().optional(),
   client_address: z.string().optional(),

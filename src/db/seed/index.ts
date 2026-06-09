@@ -1,7 +1,7 @@
 import { count } from 'drizzle-orm';
 import { getDb } from '../client';
 import { products, settings, users } from '../schema';
-import { WAREHOUSES } from '../../types';
+import { WAREHOUSES, type UserRole, type WarehouseId } from '../../types';
 import { hashPin } from '../../utils/validation';
 import { INITIAL_MATERIALS } from './materials';
 import { INITIAL_PRODUCTS, type SeedProduct } from './products';
@@ -17,11 +17,35 @@ const ACT_COUNTER_TYPES = [
   'inventory',
 ] as const;
 
-const DEFAULT_USERS = [
-  { id: 'user-admin', name: 'Админ', role: 'admin', warehouse_default: 'WH-04' },
-  { id: 'user-ivan', name: 'Иван И.', role: 'warehouse', warehouse_default: 'WH-01' },
-  { id: 'user-maria', name: 'Мария П.', role: 'warehouse', warehouse_default: 'WH-03' },
-  { id: 'user-petar', name: 'Петар К.', role: 'warehouse', warehouse_default: 'WH-04' },
+export const SEED_USERS = [
+  {
+    id: 'user-admin',
+    name: 'Бранко К.',
+    full_name: 'Бранко Коларевич',
+    role: 'admin' as UserRole,
+    warehouse_default: 'WH-04' as WarehouseId,
+  },
+  {
+    id: 'user-cto',
+    name: 'Павел М.',
+    full_name: 'Павел Мохначев',
+    role: 'cto' as UserRole,
+    warehouse_default: 'WH-04' as WarehouseId,
+  },
+  {
+    id: 'user-ivan',
+    name: 'Иван И.',
+    full_name: 'Иван Иванов',
+    role: 'warehouse' as UserRole,
+    warehouse_default: 'WH-01' as WarehouseId,
+  },
+  {
+    id: 'user-natalya',
+    name: 'Наталья К.',
+    full_name: 'Наталья Кобетс',
+    role: 'warehouse' as UserRole,
+    warehouse_default: 'WH-03' as WarehouseId,
+  },
 ] as const;
 
 function toProductRow(seed: SeedProduct, updatedAt: number) {
@@ -62,9 +86,10 @@ export async function seedDatabase(): Promise<void> {
   const defaultPinHash = await hashPin('1234');
 
   await db.insert(users).values(
-    DEFAULT_USERS.map((user) => ({
+    SEED_USERS.map((user) => ({
       id: user.id,
       name: user.name,
+      full_name: user.full_name,
       role: user.role,
       pin_hash: defaultPinHash,
       warehouse_default: user.warehouse_default,
